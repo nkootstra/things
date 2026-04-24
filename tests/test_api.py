@@ -4,6 +4,7 @@ import os
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from things_api.db.models import Area, Base, ChecklistItem, SyncState, Tag, Task
@@ -138,3 +139,84 @@ async def test_get_sync_status_empty(authed_client):
     resp = await authed_client.get("/api/sync/status")
     assert resp.status_code == 200
     assert resp.json()["sync_status"] == "never"
+
+
+# --- Write endpoints ---
+
+
+@pytest.mark.asyncio
+async def test_create_task(authed_client, db):
+    resp = await authed_client.post("/api/tasks", json={"title": "New task", "schedule": 1})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["title"] == "New task"
+    assert data["schedule"] == 1
+    assert data["uuid"]  # auto-generated
+    assert data["status"] == 0  # default pending
+
+
+@pytest.mark.asyncio
+async def test_create_task_validates_title(authed_client):
+    resp = await authed_client.post("/api/tasks", json={})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_task(authed_client, db):
+    task = Task(uuid="upd_task_001abcdefghij", title="Old title")
+    db.add(task)
+    await db.commit()
+
+    resp = await authed_client.patch(
+        "/api/tasks/upd_task_001abcdefghij",
+        json={"title": "New title", "status": 3},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "New title"
+    assert resp.json()["status"] == 3
+
+
+@pytest.mark.asyncio
+async def test_update_task_404(authed_client):
+    resp = await authed_client.patch("/api/tasks/nonexistent_uuid_12345", json={"title": "x"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_task(authed_client, db):
+    task = Task(uuid="del_task_001abcdefghij", title="To delete")
+    db.add(task)
+    await db.commit()
+
+    resp = await authed_client.delete("/api/tasks/del_task_001abcdefghij")
+    assert resp.status_code == 204
+
+    db.expire_all()
+    result = await db.execute(select(Task).where(Task.uuid == "del_task_001abcdefghij"))
+    deleted = result.scalar_one_or_none()
+    assert deleted is not None
+    assert deleted.trashed is True
+
+
+@pytest.mark.asyncio
+async def test_create_task_sets_pending_push(authed_client, db):
+    resp = await authed_client.post("/api/tasks", json={"title": "Push me"})
+    uuid = resp.json()["uuid"]
+
+    result = await db.execute(select(Task).where(Task.uuid == uuid))
+    task = result.scalar_one()
+    assert task.pending_push is True
+
+
+@pytest.mark.asyncio
+async def test_update_task_sets_pending_push(authed_client, db):
+    task = Task(uuid="push_upd_01abcdefghijk", title="Original", pending_push=False)
+    db.add(task)
+    await db.commit()
+
+    await authed_client.patch("/api/tasks/push_upd_01abcdefghijk", json={"title": "Changed"})
+
+    db.expire_all()
+    result = await db.execute(select(Task).where(Task.uuid == "push_upd_01abcdefghijk"))
+    updated = result.scalar_one()
+    assert updated.pending_push is True

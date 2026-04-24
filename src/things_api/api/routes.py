@@ -1,6 +1,11 @@
-"""Read-only API endpoints for Things3 data."""
+"""API endpoints for Things3 data."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import time
+import uuid as uuid_mod
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,3 +78,86 @@ def _task_to_dict(t: Task) -> dict:
         "project_uuid": t.project_uuid,
         "heading_uuid": t.heading_uuid,
     }
+
+
+# --- Write endpoints ---
+
+
+class TaskCreate(BaseModel):
+    title: str
+    notes: str | None = None
+    status: int = 0
+    schedule: int = 0
+    type: int = 0
+    area_uuid: str | None = None
+    project_uuid: str | None = None
+    heading_uuid: str | None = None
+    deadline: float | None = None
+    start_date: float | None = None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    notes: str | None = None
+    status: int | None = None
+    schedule: int | None = None
+    type: int | None = None
+    area_uuid: str | None = None
+    project_uuid: str | None = None
+    heading_uuid: str | None = None
+    deadline: float | None = None
+    start_date: float | None = None
+
+
+@router.post("/tasks", status_code=201)
+async def create_task(body: TaskCreate, session: AsyncSession = Depends(get_session)):
+    now = time.time()
+    task = Task(
+        uuid=uuid_mod.uuid4().hex[:24],
+        title=body.title,
+        notes=body.notes or "",
+        status=body.status,
+        schedule=body.schedule,
+        type=body.type,
+        area_uuid=body.area_uuid,
+        project_uuid=body.project_uuid,
+        heading_uuid=body.heading_uuid,
+        deadline=body.deadline,
+        start_date=body.start_date,
+        creation_date=now,
+        modification_date=now,
+        pending_push=True,
+    )
+    session.add(task)
+    await session.commit()
+    return _task_to_dict(task)
+
+
+@router.patch("/tasks/{uuid}")
+async def update_task(uuid: str, body: TaskUpdate, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Task).where(Task.uuid == uuid))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(task, field, value)
+    task.modification_date = time.time()
+    task.pending_push = True
+
+    await session.commit()
+    return _task_to_dict(task)
+
+
+@router.delete("/tasks/{uuid}", status_code=204)
+async def delete_task(uuid: str, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Task).where(Task.uuid == uuid))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.trashed = True
+    task.modification_date = time.time()
+    task.pending_push = True
+    await session.commit()
+    return Response(status_code=204)

@@ -109,3 +109,62 @@ async def test_pull_sync_creates_area(db_session):
     result = await db_session.execute(select(Area).where(Area.uuid == "uuid_area_01abcdefghijk"))
     area = result.scalar_one()
     assert area.title == "Work"
+
+
+# --- Push sync tests ---
+
+
+class FakePushClient:
+    """Fake client that records commit calls."""
+
+    def __init__(self, history_key: str = "fake-key", head_index: int = 5):
+        self.history_key = history_key
+        self.committed: list[dict] = []
+        self._head_index = head_index
+
+    async def authenticate(self) -> str:
+        return self.history_key
+
+    async def commit(self, items: list[dict], ancestor_index: int) -> int:
+        self.committed.append({"items": items, "ancestor_index": ancestor_index})
+        return self._head_index + len(items)
+
+
+@pytest.mark.asyncio
+async def test_push_sync_sends_pending_tasks(db_session):
+    from things_api.cloud.sync import push_sync
+
+    # Set up sync state
+    state = SyncState(id=1, history_key="fake-key", head_index=5)
+    db_session.add(state)
+
+    # Create a locally modified task
+    task = Task(uuid="push_task_01abcdefghij", title="Push me", pending_push=True, status=0, schedule=1)
+    db_session.add(task)
+    await db_session.commit()
+
+    client = FakePushClient()
+    counts = await push_sync(client, db_session)
+
+    assert counts["pushed"] == 1
+    assert len(client.committed) == 1
+    assert client.committed[0]["ancestor_index"] == 5
+
+    # Task should no longer be pending
+    await db_session.refresh(task)
+    assert task.pending_push is False
+
+
+@pytest.mark.asyncio
+async def test_push_sync_skips_when_nothing_pending(db_session):
+    from things_api.cloud.sync import push_sync
+
+    state = SyncState(id=1, history_key="fake-key", head_index=5)
+    db_session.add(state)
+    await db_session.commit()
+
+    client = FakePushClient()
+    counts = await push_sync(client, db_session)
+
+    assert counts["pushed"] == 0
+    assert len(client.committed) == 0

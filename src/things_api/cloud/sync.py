@@ -222,3 +222,75 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
 
     await session.commit()
     return counts
+
+
+def _task_to_wire(task: Task) -> dict:
+    """Convert a Task to Things Cloud wire format."""
+    payload: dict = {}
+    if task.title:
+        payload["tt"] = task.title
+    if task.notes:
+        payload["nt"] = f'<note xml:space="preserve">{task.notes}</note>'
+    if task.status is not None:
+        payload["ss"] = task.status
+    if task.schedule is not None:
+        payload["st"] = task.schedule
+    if task.type is not None:
+        payload["tp"] = 1 if task.type == 1 else 0
+    if task.trashed is not None:
+        payload["tr"] = task.trashed
+    if task.index is not None:
+        payload["ix"] = task.index
+    if task.area_uuid:
+        payload["ar"] = [task.area_uuid]
+    if task.project_uuid:
+        payload["pr"] = [task.project_uuid]
+    if task.deadline is not None:
+        payload["dd"] = task.deadline
+    if task.start_date is not None:
+        payload["sr"] = task.start_date
+    if task.creation_date is not None:
+        payload["cd"] = task.creation_date
+    if task.modification_date is not None:
+        payload["md"] = task.modification_date
+
+    return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
+
+
+async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
+    """Push locally modified tasks to Things Cloud."""
+    state = await _get_or_create_sync_state(session)
+
+    if not state.history_key:
+        history_key = await client.authenticate()  # type: ignore[attr-defined]
+        state.history_key = history_key
+
+    result = await session.execute(select(Task).where(Task.pending_push == True))
+    pending_tasks = result.scalars().all()
+
+    counts: dict[str, int] = {"pushed": 0}
+
+    if not pending_tasks:
+        return counts
+
+    items = [_task_to_wire(t) for t in pending_tasks]
+
+    try:
+        new_index = await client.commit(items, ancestor_index=state.head_index)  # type: ignore[attr-defined]
+    except Exception as e:
+        state.sync_status = "push_error"
+        state.last_error = str(e)
+        await session.commit()
+        raise
+
+    for task in pending_tasks:
+        task.pending_push = False
+
+    state.head_index = new_index
+    state.last_sync_at = time.time()
+    state.sync_status = "synced"
+    state.last_error = None
+
+    await session.commit()
+    counts["pushed"] = len(pending_tasks)
+    return counts
