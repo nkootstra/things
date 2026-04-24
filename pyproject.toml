@@ -1,6 +1,6 @@
 [project]
 name = "things-api"
-version = "0.1.0"
+version = "0.1.1"
 description = "FastAPI service that syncs with Things Cloud and exposes a RESTful API over Things3 data"
 readme = "README.md"
 authors = [
