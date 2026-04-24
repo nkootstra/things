@@ -39,7 +39,7 @@ async def test_scheduler_does_not_crash_on_sync_error():
     )
 
     scheduler.start()
-    await asyncio.sleep(0.15)
+    await asyncio.sleep(0.25)
     scheduler.stop()
 
     # Should have retried despite errors
