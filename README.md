@@ -114,7 +114,13 @@ uv run pytest -v
 docker compose up -d
 ```
 
-The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts.
+The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts. The `docker-compose.yml` pulls the published image from `ghcr.io/nkootstra/things-api`.
+
+For local development, build from source instead:
+
+```sh
+docker compose -f docker-compose.dev.yml up -d
+```
 
 For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS termination:
 
@@ -124,6 +130,32 @@ For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS ter
                    │  (TLS)   │      │  :8000       │
                    └──────────┘      └──────────────┘
 ```
+
+## Releasing a New Version
+
+Releases are fully automated via GitHub Actions. Pushing a version tag triggers the pipeline:
+
+```
+preflight (tests) -> build (Docker image) -> release (GitHub release)
+```
+
+To release:
+
+```sh
+# 1. Update the version in pyproject.toml
+# 2. Commit the version bump
+git add pyproject.toml
+git commit -m "release: v0.2.0"
+
+# 3. Tag and push
+git tag v0.2.0
+git push && git push --tags
+```
+
+This will:
+- Run all tests (preflight gate)
+- Build and push the Docker image to `ghcr.io/nkootstra/things-api` with tags `0.2.0`, `0.2`, and `latest`
+- Create a GitHub release with auto-generated release notes
 
 ## Project Structure
 
