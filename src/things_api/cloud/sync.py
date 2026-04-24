@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 from xml.etree import ElementTree
 
 from sqlalchemy import select
@@ -19,9 +22,35 @@ from things_api.cloud.schema import (
     TagPayload,
     TaskPayload,
 )
+import things_api.config as config
 from things_api.db.models import Area, ChecklistItem, SyncState, Tag, Task
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+class SyncCircuitOpenError(Exception):
+    def __init__(self, retry_after_seconds: int):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(f"Circuit breaker open. Retry in {retry_after_seconds}s")
+
+
+async def _with_retry(op_name: str, fn: Callable[[], Awaitable[T]]) -> T:
+    attempts = max(1, config.settings.sync_retry_attempts)
+    base_delay = max(0.0, config.settings.sync_retry_base_seconds)
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return await fn()
+        except Exception:
+            if attempt >= attempts:
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            logger.warning("%s failed (attempt %s/%s), retrying in %.2fs", op_name, attempt, attempts, delay)
+            await asyncio.sleep(delay)
+
+    raise RuntimeError("unreachable")
 
 
 def parse_notes(raw_notes: str | dict | None) -> str:
@@ -46,6 +75,57 @@ async def _get_or_create_sync_state(session: AsyncSession) -> SyncState:
         session.add(state)
         await session.flush()
     return state
+
+
+def _prepare_circuit_for_attempt(state: SyncState) -> bool:
+    """Return True if this attempt is a half-open probe."""
+    now = time.time()
+    if state.circuit_open_until and state.circuit_open_until > now:
+        retry_after = max(1, int(state.circuit_open_until - now))
+        raise SyncCircuitOpenError(retry_after)
+
+    if state.circuit_probe_active:
+        return True
+
+    if state.sync_status == "circuit_open" and state.circuit_open_until and state.circuit_open_until <= now:
+        state.sync_status = "half_open"
+        state.circuit_probe_active = True
+        return True
+
+    if state.sync_status == "half_open":
+        state.circuit_probe_active = True
+        return True
+
+    return False
+
+
+def _record_sync_error(state: SyncState, *, force_open: bool = False) -> None:
+    state.sync_errors_total = (state.sync_errors_total or 0) + 1
+    state.consecutive_sync_errors = (state.consecutive_sync_errors or 0) + 1
+
+    threshold = max(1, config.settings.sync_circuit_breaker_failures)
+    should_open = force_open or bool(state.circuit_probe_active) or state.consecutive_sync_errors >= threshold
+    if should_open:
+        cooldown = max(1.0, config.settings.sync_circuit_breaker_cooldown_seconds)
+        state.circuit_open_until = time.time() + cooldown
+        state.sync_status = "circuit_open"
+        state.circuit_probe_active = False
+
+
+def _record_sync_success(state: SyncState, phase: str) -> None:
+    if state.circuit_probe_active:
+        if phase == "push":
+            state.consecutive_sync_errors = 0
+            state.circuit_open_until = None
+            state.circuit_probe_active = False
+            state.sync_status = "synced"
+        else:
+            # Pull succeeded in half-open mode; keep probe active until push completes.
+            state.sync_status = "half_open"
+        return
+
+    state.consecutive_sync_errors = 0
+    state.circuit_open_until = None
 
 
 async def _apply_task(session: AsyncSession, uuid: str, action: int, payload: TaskPayload) -> None:
@@ -180,16 +260,21 @@ _APPLY_MAP: dict[str, tuple] = {
 async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
     """Pull changes from Things Cloud and apply to local DB."""
     state = await _get_or_create_sync_state(session)
+    is_half_open_probe = _prepare_circuit_for_attempt(state)
 
     if not state.history_key:
         history_key = await client.authenticate()  # type: ignore[attr-defined]
         state.history_key = history_key
 
     try:
-        items, new_index = await client.get_items(start_index=state.head_index)  # type: ignore[attr-defined]
+        items, new_index = await _with_retry(
+            "pull_sync.get_items",
+            lambda: client.get_items(start_index=state.head_index),  # type: ignore[attr-defined]
+        )
     except Exception as e:
         state.sync_status = "error"
         state.last_error = str(e)
+        _record_sync_error(state, force_open=is_half_open_probe)
         await session.commit()
         raise
 
@@ -207,11 +292,13 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
 
             payload_cls, apply_fn = _APPLY_MAP[entity_type]
             try:
-                payload = payload_cls.model_validate(payload_data)
-                await apply_fn(session, uuid, action, payload)
+                # Isolate each item so one bad payload does not roll back
+                # previously applied valid items in this sync batch.
+                async with session.begin_nested():
+                    payload = payload_cls.model_validate(payload_data)
+                    await apply_fn(session, uuid, action, payload)
             except Exception:
                 logger.exception("Failed to apply item %s (type=%s)", uuid, entity_type)
-                await session.rollback()
                 counts["skipped"] += 1
                 continue
 
@@ -226,6 +313,8 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
     state.last_sync_at = time.time()
     state.sync_status = "synced"
     state.last_error = None
+    state.last_pull_skipped = counts["skipped"]
+    _record_sync_success(state, phase="pull")
 
     await session.commit()
     return counts
@@ -267,6 +356,7 @@ def _task_to_wire(task: Task) -> dict:
 async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
     """Push locally modified tasks to Things Cloud."""
     state = await _get_or_create_sync_state(session)
+    is_half_open_probe = _prepare_circuit_for_attempt(state)
 
     if not state.history_key:
         history_key = await client.authenticate()  # type: ignore[attr-defined]
@@ -278,15 +368,21 @@ async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
     counts: dict[str, int] = {"pushed": 0}
 
     if not pending_tasks:
+        _record_sync_success(state, phase="push")
+        await session.commit()
         return counts
 
     items = [_task_to_wire(t) for t in pending_tasks]
 
     try:
-        new_index = await client.commit(items, ancestor_index=state.head_index)  # type: ignore[attr-defined]
+        new_index = await _with_retry(
+            "push_sync.commit",
+            lambda: client.commit(items, ancestor_index=state.head_index),  # type: ignore[attr-defined]
+        )
     except Exception as e:
         state.sync_status = "push_error"
         state.last_error = str(e)
+        _record_sync_error(state, force_open=is_half_open_probe)
         await session.commit()
         raise
 
@@ -297,6 +393,7 @@ async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
     state.last_sync_at = time.time()
     state.sync_status = "synced"
     state.last_error = None
+    _record_sync_success(state, phase="push")
 
     await session.commit()
     counts["pushed"] = len(pending_tasks)

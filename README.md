@@ -19,10 +19,20 @@ All settings are configured via environment variables (or a `.env` file):
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `API_KEY` | Yes | — | API key for authentication. Must be at least 32 characters. Passed via `X-API-Key` header. |
+| `API_KEY` | Yes | — | Primary API key for authentication. Must be at least 32 characters. Passed via `X-API-Key` header. |
+| `API_KEY_NEXT` | No | — | Optional secondary API key for zero-downtime key rotation. |
 | `THINGS_EMAIL` | Yes | — | Your Things Cloud account email |
 | `THINGS_PASSWORD` | Yes | — | Your Things Cloud account password |
 | `SYNC_INTERVAL_SECONDS` | No | `0` | Background sync interval in seconds. `0` disables background sync. Recommended: `60`. |
+| `ENABLE_SCHEDULER` | No | `true` | Enable background scheduler in this process. |
+| `SCHEDULER_LOCK_SECONDS` | No | `30` | Distributed scheduler leadership lease duration. Only the lock owner runs background sync. |
+| `SCHEDULER_HEARTBEAT_SECONDS` | No | `10` | Lease renewal interval for scheduler leadership. |
+| `MANUAL_SYNC_LOCK_SECONDS` | No | `120` | Lease duration for manual sync lock to prevent overlapping `POST /api/sync` runs. |
+| `SYNC_RETRY_ATTEMPTS` | No | `3` | Number of retry attempts for transient cloud pull/push failures. |
+| `SYNC_RETRY_BASE_SECONDS` | No | `0.25` | Exponential backoff base delay for retries. |
+| `SYNC_CIRCUIT_BREAKER_FAILURES` | No | `3` | Consecutive sync failures required to open the circuit breaker. |
+| `SYNC_CIRCUIT_BREAKER_COOLDOWN_SECONDS` | No | `60` | Cooldown period while breaker is open before a half-open probe is allowed. |
+| `READINESS_MAX_SYNC_ERRORS` | No | `5` | Degrade `/ready` when total sync errors exceed this threshold. |
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/things.db` | SQLAlchemy database URL |
 
 ## API Endpoints
@@ -50,13 +60,14 @@ GET    /api/tags            # List all tags
 
 ```
 GET    /api/sync/status     # Current sync state (status, head index, last sync time, errors)
-POST   /api/sync            # Manually trigger a full pull + push cycle (rate limited to 1/min)
+POST   /api/sync            # Manually trigger a full pull + push cycle (rate limited; overlap protected by lock)
 ```
 
 ### Health
 
 ```
-GET    /health              # Health check (no auth required)
+GET    /health              # Liveness check (no auth required)
+GET    /ready               # Readiness check (DB + sync degradation/circuit state)
 ```
 
 ### Create a task
@@ -106,6 +117,9 @@ uv run uvicorn things_api.main:app --reload
 
 # Run tests
 uv run pytest -v
+
+# Run migrations
+uv run alembic upgrade head
 ```
 
 ## Deploying with Docker

@@ -1,6 +1,7 @@
 """Tests for API endpoints — integration tests through FastAPI test client."""
 
 import os
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -91,6 +92,22 @@ async def test_tasks_returns_200_with_valid_key(authed_client, db):
 
 
 @pytest.mark.asyncio
+async def test_tasks_accepts_next_api_key_for_rotation(app, monkeypatch):
+    app_instance, _ = app
+    monkeypatch.setenv("API_KEY_NEXT", "b" * 32)
+
+    transport = ASGITransport(app=app_instance)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-API-Key": "b" * 32},
+    ) as client:
+        resp = await client.get("/api/tasks")
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_get_tasks_returns_tasks(authed_client, db):
     task = Task(uuid="api_task_001abcdefghi", title="Test task", status=0, schedule=1)
     db.add(task)
@@ -123,7 +140,14 @@ async def test_get_task_404(authed_client):
 
 @pytest.mark.asyncio
 async def test_get_sync_status(authed_client, db):
-    state = SyncState(id=1, sync_status="synced", head_index=42, last_sync_at=1700000000.0)
+    state = SyncState(
+        id=1,
+        sync_status="synced",
+        head_index=42,
+        last_sync_at=1700000000.0,
+        last_pull_skipped=2,
+        sync_errors_total=3,
+    )
     db.add(state)
     await db.commit()
 
@@ -132,6 +156,8 @@ async def test_get_sync_status(authed_client, db):
     data = resp.json()
     assert data["sync_status"] == "synced"
     assert data["head_index"] == 42
+    assert data["last_pull_skipped"] == 2
+    assert data["sync_errors_total"] == 3
 
 
 @pytest.mark.asyncio
@@ -139,6 +165,23 @@ async def test_get_sync_status_empty(authed_client):
     resp = await authed_client.get("/api/sync/status")
     assert resp.status_code == 200
     assert resp.json()["sync_status"] == "never"
+    assert resp.json()["last_pull_skipped"] == 0
+    assert resp.json()["sync_errors_total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_ready_degraded_when_sync_error_threshold_exceeded(client, db, monkeypatch):
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_errors", 2)
+
+    db.add(SyncState(id=1, sync_status="error", sync_errors_total=3, last_pull_skipped=0))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "degraded"
+    assert resp.json()["reason"] == "sync_errors_threshold_exceeded"
 
 
 # --- Write endpoints ---
@@ -209,6 +252,13 @@ async def test_create_task_sets_pending_push(authed_client, db):
 
 
 @pytest.mark.asyncio
+async def test_create_task_generates_22_char_uuid(authed_client):
+    resp = await authed_client.post("/api/tasks", json={"title": "UUID length check"})
+    assert resp.status_code == 201
+    assert len(resp.json()["uuid"]) == 22
+
+
+@pytest.mark.asyncio
 async def test_update_task_sets_pending_push(authed_client, db):
     task = Task(uuid="push_upd_01abcdefghijk", title="Original", pending_push=False)
     db.add(task)
@@ -248,3 +298,103 @@ async def test_update_task_with_string_enum(authed_client, db):
     assert resp.status_code == 200
     assert resp.json()["status"] == "cancelled"
     assert resp.json()["schedule"] == "anytime"
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_returns_409_when_manual_sync_lock_held(authed_client, db, monkeypatch):
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "things_email", "user@example.com")
+    monkeypatch.setattr(settings, "things_password", "secret")
+
+    db.add(SyncState(id=1, manual_sync_lock_until=time.time() + 30))
+    await db.commit()
+
+    resp = await authed_client.post("/api/sync")
+    assert resp.status_code == 409
+    assert "already in progress" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_returns_503_when_circuit_open(authed_client, db, monkeypatch):
+    from things_api.config import settings
+
+    now = time.time()
+    db.add(SyncState(id=1, sync_status="circuit_open", circuit_open_until=now + 30))
+    await db.commit()
+
+    monkeypatch.setattr(settings, "things_email", "user@example.com")
+    monkeypatch.setattr(settings, "things_password", "secret")
+
+    resp = await authed_client.post("/api/sync")
+    assert resp.status_code == 503
+    assert "Circuit breaker open" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_releases_manual_lock_after_success(authed_client, db, monkeypatch):
+    import things_api.cloud.client as client_mod
+    import things_api.cloud.sync as sync_mod
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "things_email", "user@example.com")
+    monkeypatch.setattr(settings, "things_password", "secret")
+
+    class FakeClient:
+        def __init__(self, email: str, password: str):
+            self.email = email
+            self.password = password
+
+        async def close(self):
+            return None
+
+    async def fake_pull_sync(client, session):
+        return {"created": 0, "modified": 0, "deleted": 0, "skipped": 0}
+
+    async def fake_push_sync(client, session):
+        return {"pushed": 0}
+
+    monkeypatch.setattr(client_mod, "ThingsCloudClient", FakeClient)
+    monkeypatch.setattr(sync_mod, "pull_sync", fake_pull_sync)
+    monkeypatch.setattr(sync_mod, "push_sync", fake_push_sync)
+
+    resp = await authed_client.post("/api/sync")
+    assert resp.status_code == 200
+
+    result = await db.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one()
+    assert state.manual_sync_lock_until is None
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_closes_cloud_client(authed_client, monkeypatch):
+    import things_api.cloud.client as client_mod
+    import things_api.cloud.sync as sync_mod
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "things_email", "user@example.com")
+    monkeypatch.setattr(settings, "things_password", "secret")
+
+    closed = {"value": False}
+
+    class FakeClient:
+        def __init__(self, email: str, password: str):
+            self.email = email
+            self.password = password
+
+        async def close(self):
+            closed["value"] = True
+
+    async def fake_pull_sync(client, session):
+        return {"created": 0, "modified": 0, "deleted": 0, "skipped": 0}
+
+    async def fake_push_sync(client, session):
+        return {"pushed": 0}
+
+    monkeypatch.setattr(client_mod, "ThingsCloudClient", FakeClient)
+    monkeypatch.setattr(sync_mod, "pull_sync", fake_pull_sync)
+    monkeypatch.setattr(sync_mod, "push_sync", fake_push_sync)
+
+    resp = await authed_client.post("/api/sync")
+    assert resp.status_code == 200
+    assert closed["value"] is True
