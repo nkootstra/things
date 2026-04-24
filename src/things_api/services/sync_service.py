@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import things_api.cloud.client as cloud_client_mod
 import things_api.cloud.sync as cloud_sync_mod
-from things_api.config import settings
+import things_api.config as config
 from things_api.db.models import SyncState
 from things_api.services.contracts import SyncServiceProtocol
 
@@ -60,7 +60,7 @@ class SyncService:
         }
 
     async def trigger_manual_sync(self, session: AsyncSession) -> dict:
-        if not settings.things_email or not settings.things_password:
+        if not config.settings.things_email or not config.settings.things_password:
             raise HTTPException(status_code=503, detail="Things Cloud credentials not configured")
 
         result = await session.execute(select(SyncState).where(SyncState.id == 1))
@@ -76,7 +76,7 @@ class SyncService:
                 raise HTTPException(status_code=429, detail=f"Rate limited. Try again in {int(60 - elapsed)}s")
 
         now = time.time()
-        lock_until = now + max(1.0, settings.manual_sync_lock_seconds)
+        lock_until = now + max(1.0, config.settings.manual_sync_lock_seconds)
         lock_stmt = (
             update(SyncState)
             .where(SyncState.id == 1)
@@ -88,7 +88,7 @@ class SyncService:
         if not lock_res.rowcount:
             raise HTTPException(status_code=409, detail="Manual sync already in progress")
 
-        client = self._client_factory(settings.things_email, settings.things_password)
+        client = self._client_factory(config.settings.things_email, config.settings.things_password)
         try:
             pull_result = await self._pull_fn(client, session)
             push_result = await self._push_fn(client, session)
