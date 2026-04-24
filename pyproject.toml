@@ -1,0 +1,38 @@
+[project]
+name = "things-api"
+version = "0.1.0"
+description = "FastAPI service that syncs with Things Cloud and exposes a RESTful API over Things3 data"
+readme = "README.md"
+authors = [
+    { name = "Niels Kootstra", email = "545768+nkootstra@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.21",
+    "httpx>=0.28",
+    "pydantic-settings>=2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "httpx",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.1,<1"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
