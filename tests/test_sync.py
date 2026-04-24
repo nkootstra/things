@@ -1,5 +1,7 @@
 """Tests for pull sync engine — uses real DB, mocked cloud client."""
 
+import time
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -30,6 +32,19 @@ class FakeCloudClient:
         return self.history_key
 
     async def get_items(self, start_index: int = 0) -> tuple[list[dict], int]:
+        return self.items, self.new_index
+
+
+class FlakyGetItemsClient(FakeCloudClient):
+    def __init__(self, items: list[dict], new_index: int = 1, fail_times: int = 1):
+        super().__init__(items, new_index)
+        self.fail_times = fail_times
+        self.calls = 0
+
+    async def get_items(self, start_index: int = 0) -> tuple[list[dict], int]:
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise TimeoutError("transient timeout")
         return self.items, self.new_index
 
 
@@ -94,6 +109,21 @@ async def test_pull_sync_advances_cursor(db_session):
 
 
 @pytest.mark.asyncio
+async def test_pull_sync_retries_transient_get_items_error(db_session):
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_retry_pull_abcdefgh": {"t": 0, "e": "Task6", "p": {"tt": "After retry"}}}
+    ]
+    client = FlakyGetItemsClient(items=cloud_items, new_index=3, fail_times=1)
+
+    counts = await pull_sync(client, db_session)
+
+    assert client.calls == 2
+    assert counts["created"] == 1
+
+
+@pytest.mark.asyncio
 async def test_pull_sync_creates_area(db_session):
     from things_api.cloud.sync import pull_sync
     from things_api.db.models import Area
@@ -128,6 +158,19 @@ class FakePushClient:
     async def commit(self, items: list[dict], ancestor_index: int) -> int:
         self.committed.append({"items": items, "ancestor_index": ancestor_index})
         return self._head_index + len(items)
+
+
+class FlakyCommitClient(FakePushClient):
+    def __init__(self, history_key: str = "fake-key", head_index: int = 5, fail_times: int = 1):
+        super().__init__(history_key=history_key, head_index=head_index)
+        self.fail_times = fail_times
+        self.calls = 0
+
+    async def commit(self, items: list[dict], ancestor_index: int) -> int:
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise TimeoutError("transient commit timeout")
+        return await super().commit(items, ancestor_index)
 
 
 @pytest.mark.asyncio
@@ -168,6 +211,56 @@ async def test_push_sync_skips_when_nothing_pending(db_session):
 
     assert counts["pushed"] == 0
     assert len(client.committed) == 0
+
+
+@pytest.mark.asyncio
+async def test_push_sync_retries_transient_commit_error(db_session):
+    from things_api.cloud.sync import push_sync
+
+    state = SyncState(id=1, history_key="fake-key", head_index=5)
+    db_session.add(state)
+    task = Task(uuid="push_retry_abcdefghijk", title="Retry me", pending_push=True)
+    db_session.add(task)
+    await db_session.commit()
+
+    client = FlakyCommitClient(fail_times=1)
+    counts = await push_sync(client, db_session)
+
+    assert client.calls == 2
+    assert counts["pushed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_push_sync_failure_during_half_open_reopens_circuit(db_session, monkeypatch):
+    from things_api.cloud.sync import push_sync
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "sync_retry_attempts", 1)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 999)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+
+    db_session.add(
+        SyncState(
+            id=1,
+            history_key="fake-key",
+            head_index=5,
+            sync_status="half_open",
+            circuit_open_until=time.time() - 1,
+            consecutive_sync_errors=10,
+        )
+    )
+    db_session.add(Task(uuid="push_half_open_fail_abcdef", title="Retry me", pending_push=True))
+    await db_session.commit()
+
+    client = FlakyCommitClient(fail_times=1)
+    with pytest.raises(TimeoutError):
+        await push_sync(client, db_session)
+
+    result = await db_session.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one()
+    assert state.sync_status == "circuit_open"
+    assert state.circuit_open_until is not None
+    assert state.circuit_open_until > time.time()
 
 
 @pytest.mark.asyncio
@@ -241,3 +334,137 @@ async def test_pull_sync_continues_after_item_error(db_session):
     # valid task after the skip was still applied successfully.
     result = await db_session.execute(select(Task).where(Task.uuid == "uuid_good_task_abcdefgh"))
     assert result.scalar_one().title == "Good task"
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_item_error_does_not_rollback_previous_valid_item(db_session):
+    """If one item fails, earlier applied items in same batch must remain committed."""
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_valid_first_abcdefgh": {"t": 0, "e": "Task6", "p": {"tt": "Keep me"}}},
+        # Invalid payload type for title: triggers validation exception
+        {"uuid_invalid_second_abcd": {"t": 0, "e": "Task6", "p": {"tt": ["not", "a", "string"]}}},
+    ]
+
+    client = FakeCloudClient(items=cloud_items, new_index=2)
+    counts = await pull_sync(client, db_session)
+
+    assert counts["created"] == 1
+    assert counts["skipped"] == 1
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_valid_first_abcdefgh"))
+    task = result.scalar_one_or_none()
+    assert task is not None
+    assert task.title == "Keep me"
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_opens_circuit_after_threshold(db_session, monkeypatch):
+    from things_api.cloud.sync import pull_sync
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "sync_retry_attempts", 1)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 1)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+
+    client = FlakyGetItemsClient(items=[], new_index=0, fail_times=1)
+
+    with pytest.raises(TimeoutError):
+        await pull_sync(client, db_session)
+
+    result = await db_session.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one()
+    assert state.sync_status == "circuit_open"
+    assert (state.consecutive_sync_errors or 0) == 1
+    assert state.circuit_open_until is not None
+    assert state.circuit_open_until > time.time()
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_short_circuits_when_circuit_is_open(db_session):
+    from things_api.cloud.sync import SyncCircuitOpenError, pull_sync
+
+    db_session.add(
+        SyncState(
+            id=1,
+            history_key="fake-history-key",
+            sync_status="circuit_open",
+            circuit_open_until=time.time() + 30,
+        )
+    )
+    await db_session.commit()
+
+    client = FlakyGetItemsClient(items=[], new_index=0, fail_times=0)
+
+    with pytest.raises(SyncCircuitOpenError):
+        await pull_sync(client, db_session)
+
+    assert client.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_half_open_probe_failure_reopens_immediately(db_session, monkeypatch):
+    from things_api.cloud.sync import pull_sync
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "sync_retry_attempts", 1)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 999)
+    monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+
+    db_session.add(
+        SyncState(
+            id=1,
+            history_key="fake-history-key",
+            sync_status="circuit_open",
+            circuit_open_until=time.time() - 1,
+            consecutive_sync_errors=10,
+        )
+    )
+    await db_session.commit()
+
+    client = FlakyGetItemsClient(items=[], new_index=0, fail_times=1)
+
+    with pytest.raises(TimeoutError):
+        await pull_sync(client, db_session)
+
+    result = await db_session.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one()
+    assert state.sync_status == "circuit_open"
+    assert state.circuit_open_until is not None
+    assert state.circuit_open_until > time.time()
+
+
+@pytest.mark.asyncio
+async def test_half_open_probe_success_closes_circuit(db_session):
+    from things_api.cloud.sync import pull_sync, push_sync
+
+    db_session.add(
+        SyncState(
+            id=1,
+            history_key="fake-history-key",
+            sync_status="circuit_open",
+            circuit_open_until=time.time() - 1,
+            consecutive_sync_errors=4,
+        )
+    )
+    await db_session.commit()
+
+    pull_client = FakeCloudClient(
+        items=[{"uuid_half_open_ok_abcdef": {"t": 0, "e": "Task6", "p": {"tt": "Recovered"}}}],
+        new_index=10,
+    )
+
+    counts = await pull_sync(pull_client, db_session)
+    assert counts["created"] == 1
+
+    # Pull success in half-open keeps probe active until push completes.
+    push_client = FakePushClient(history_key="fake-history-key", head_index=10)
+    push_counts = await push_sync(push_client, db_session)
+    assert push_counts["pushed"] == 0
+
+    result = await db_session.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one()
+    assert state.sync_status == "synced"
+    assert (state.consecutive_sync_errors or 0) == 0
+    assert state.circuit_open_until is None
