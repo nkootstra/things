@@ -59,25 +59,36 @@ class ThingsCloudClient:
         return self.history_key
 
     async def get_items(self, start_index: int = 0) -> tuple[list[dict], int]:
-        """Fetch sync items from Things Cloud."""
+        """Fetch all sync items from Things Cloud, handling pagination."""
         if not self.history_key:
             await self.authenticate()
 
         client = await self._get_client()
         encoded_password = quote(self.password, safe="")
 
-        resp = await client.get(
-            f"/version/1/history/{self.history_key}/items",
-            params={"start-index": start_index},
-            headers={"Authorization": f"Password {encoded_password}"},
-        )
-        resp.raise_for_status()
+        all_items: list[dict] = []
+        current_start = start_index
 
-        data = resp.json()
-        items = data.get("items", [])
-        current_index = data.get("current-item-index", start_index + len(items))
+        while True:
+            resp = await client.get(
+                f"/version/1/history/{self.history_key}/items",
+                params={"start-index": current_start},
+                headers={"Authorization": f"Password {encoded_password}"},
+            )
+            resp.raise_for_status()
 
-        return items, current_index
+            data = resp.json()
+            items = data.get("items", [])
+            current_index = data.get("current-item-index", current_start)
+
+            all_items.extend(items)
+
+            # If we got no items or current_index didn't advance, we're done
+            if not items or current_index <= current_start + len(items):
+                return all_items, current_index
+
+            # More pages available
+            current_start = current_start + len(items)
 
     async def commit(self, items: list[dict], ancestor_index: int) -> int:
         """Push changes to Things Cloud."""

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class TaskPayload(BaseModel):
     title: str | None = Field(None, alias="tt")
-    notes: str | None = Field(None, alias="nt")
+    notes: Any = Field(None, alias="nt")
     status: int | None = Field(None, alias="ss")
     schedule: int | None = Field(None, alias="st")
     is_project: int | None = Field(None, alias="tp")

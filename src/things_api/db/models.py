@@ -1,5 +1,5 @@
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Table, Text
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy import Boolean, Column, Float, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
@@ -25,15 +25,12 @@ class Task(Base):
     deadline = Column(Float, nullable=True)
     completion_date = Column(Float, nullable=True)
 
-    area_uuid = Column(String(22), ForeignKey("area.uuid"), nullable=True)
-    project_uuid = Column(String(22), ForeignKey("task.uuid"), nullable=True)
-    heading_uuid = Column(String(22), ForeignKey("task.uuid"), nullable=True)
+    area_uuid = Column(String(22), nullable=True)
+    project_uuid = Column(String(22), nullable=True)
+    heading_uuid = Column(String(22), nullable=True)
 
     pending_push = Column(Boolean, default=False)
     local_modified_at = Column(Float, nullable=True)
-
-    area = relationship("Area", back_populates="tasks")
-    checklist_items = relationship("ChecklistItem", back_populates="task")
 
 
 class Area(Base):
@@ -44,8 +41,6 @@ class Area(Base):
     visible = Column(Boolean, default=True)
     index = Column(Integer, default=0)
 
-    tasks = relationship("Task", back_populates="area")
-
 
 class Tag(Base):
     __tablename__ = "tag"
@@ -53,10 +48,8 @@ class Tag(Base):
     uuid = Column(String(22), primary_key=True)
     title = Column(Text, nullable=False, default="")
     shortcut = Column(String(10), nullable=True)
-    parent_uuid = Column(String(22), ForeignKey("tag.uuid"), nullable=True)
+    parent_uuid = Column(String(22), nullable=True)
     index = Column(Integer, default=0)
-
-    parent = relationship("Tag", remote_side=[uuid])
 
 
 class ChecklistItem(Base):
@@ -67,9 +60,7 @@ class ChecklistItem(Base):
     status = Column(Integer, default=0)
     index = Column(Integer, default=0)
     stop_date = Column(Float, nullable=True)
-    task_uuid = Column(String(22), ForeignKey("task.uuid"), nullable=False)
-
-    task = relationship("Task", back_populates="checklist_items")
+    task_uuid = Column(String(22), nullable=True)
 
 
 class SyncState(Base):

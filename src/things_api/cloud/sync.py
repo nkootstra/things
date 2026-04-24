@@ -24,14 +24,18 @@ from things_api.db.models import Area, ChecklistItem, SyncState, Tag, Task
 logger = logging.getLogger(__name__)
 
 
-def parse_notes(xml_notes: str | None) -> str:
-    if not xml_notes:
+def parse_notes(raw_notes: str | dict | None) -> str:
+    if not raw_notes:
         return ""
+    # Things Cloud sends notes as either XML string or rich text dict
+    # Dict format: {'_t': 'tx', 'ch': 0, 'v': '<text>', 't': 1}
+    if isinstance(raw_notes, dict):
+        return str(raw_notes.get("v", ""))
     try:
-        root = ElementTree.fromstring(xml_notes)
+        root = ElementTree.fromstring(raw_notes)
         return root.text or ""
     except ElementTree.ParseError:
-        return re.sub(r"<[^>]+>", "", xml_notes).strip()
+        return re.sub(r"<[^>]+>", "", raw_notes).strip()
 
 
 async def _get_or_create_sync_state(session: AsyncSession) -> SyncState:
@@ -144,11 +148,13 @@ async def _apply_checklist(session: AsyncSession, uuid: str, action: int, payloa
             await session.delete(item)
         return
 
+    task_ref = payload.task_ids[0] if payload.task_ids and payload.task_ids[0] else None
+
     if item is None:
-        if not payload.task_ids:
-            logger.warning("ChecklistItem %s has no task reference, skipping", uuid)
+        if not task_ref:
+            logger.warning("ChecklistItem %s has no task reference, skipping create", uuid)
             return
-        item = ChecklistItem(uuid=uuid, task_uuid=payload.task_ids[0])
+        item = ChecklistItem(uuid=uuid, task_uuid=task_ref)
         session.add(item)
 
     if payload.title is not None:
@@ -159,8 +165,8 @@ async def _apply_checklist(session: AsyncSession, uuid: str, action: int, payloa
         item.index = payload.index
     if payload.stop_date is not None:
         item.stop_date = payload.stop_date
-    if payload.task_ids and payload.task_ids:
-        item.task_uuid = payload.task_ids[0]
+    if task_ref:
+        item.task_uuid = task_ref
 
 
 _APPLY_MAP: dict[str, tuple] = {
@@ -205,6 +211,7 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
                 await apply_fn(session, uuid, action, payload)
             except Exception:
                 logger.exception("Failed to apply item %s (type=%s)", uuid, entity_type)
+                await session.rollback()
                 counts["skipped"] += 1
                 continue
 

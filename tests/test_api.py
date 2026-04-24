@@ -150,9 +150,9 @@ async def test_create_task(authed_client, db):
     assert resp.status_code == 201
     data = resp.json()
     assert data["title"] == "New task"
-    assert data["schedule"] == 1
+    assert data["schedule"] == "anytime"
     assert data["uuid"]  # auto-generated
-    assert data["status"] == 0  # default pending
+    assert data["status"] == "pending"  # default pending
 
 
 @pytest.mark.asyncio
@@ -173,7 +173,7 @@ async def test_update_task(authed_client, db):
     )
     assert resp.status_code == 200
     assert resp.json()["title"] == "New title"
-    assert resp.json()["status"] == 3
+    assert resp.json()["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -220,3 +220,31 @@ async def test_update_task_sets_pending_push(authed_client, db):
     result = await db.execute(select(Task).where(Task.uuid == "push_upd_01abcdefghijk"))
     updated = result.scalar_one()
     assert updated.pending_push is True
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_string_enums(authed_client, db):
+    resp = await authed_client.post(
+        "/api/tasks",
+        json={"title": "String enums", "status": "completed", "schedule": "someday", "type": "project"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["schedule"] == "someday"
+    assert data["type"] == "project"
+
+
+@pytest.mark.asyncio
+async def test_update_task_with_string_enum(authed_client, db):
+    task = Task(uuid="enum_upd_01abcdefghijk", title="Test", status=0, schedule=0)
+    db.add(task)
+    await db.commit()
+
+    resp = await authed_client.patch(
+        "/api/tasks/enum_upd_01abcdefghijk",
+        json={"status": "cancelled", "schedule": "anytime"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+    assert resp.json()["schedule"] == "anytime"

@@ -168,3 +168,76 @@ async def test_push_sync_skips_when_nothing_pending(db_session):
 
     assert counts["pushed"] == 0
     assert len(client.committed) == 0
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_handles_dict_notes(db_session):
+    """Things Cloud sends notes as rich text dict, not just XML strings."""
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_notes_dict_abcdefgh": {"t": 0, "e": "Task6", "p": {
+            "tt": "Dict notes task",
+            "nt": {"_t": "tx", "ch": 0, "v": "Hello world", "t": 1},
+        }}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    counts = await pull_sync(client, db_session)
+    assert counts["created"] == 1
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_notes_dict_abcdefgh"))
+    task = result.scalar_one()
+    assert task.notes == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_checklist_modify_without_task_ids(db_session):
+    """Modify event for checklist item without ts field should not null out task_uuid."""
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import ChecklistItem
+
+    # First create the checklist item with a task reference
+    cloud_items = [
+        {"uuid_task_parent_abcdefg": {"t": 0, "e": "Task6", "p": {"tt": "Parent"}}},
+        {"uuid_cl_modify_abcdefghi": {"t": 0, "e": "ChecklistItem3", "p": {
+            "tt": "Step 1", "ss": 0, "ts": ["uuid_task_parent_abcdefg"],
+        }}},
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    await pull_sync(client, db_session)
+
+    # Now modify it without ts field
+    cloud_items2 = [
+        {"uuid_cl_modify_abcdefghi": {"t": 1, "e": "ChecklistItem3", "p": {
+            "tt": "Step 1 updated",
+        }}},
+    ]
+    client2 = FakeCloudClient(items=cloud_items2, new_index=2)
+    counts = await pull_sync(client2, db_session)
+    assert counts["modified"] == 1
+
+    result = await db_session.execute(select(ChecklistItem).where(ChecklistItem.uuid == "uuid_cl_modify_abcdefghi"))
+    item = result.scalar_one()
+    assert item.title == "Step 1 updated"
+    assert item.task_uuid == "uuid_task_parent_abcdefg"  # NOT nulled out
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_continues_after_item_error(db_session):
+    """A failed item should not prevent subsequent items from being applied."""
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        # First: a checklist item with no task ref (will be skipped)
+        {"uuid_bad_cl_abcdefghijk": {"t": 0, "e": "ChecklistItem3", "p": {"tt": "Orphan"}}},
+        # Second: a valid task (should still succeed)
+        {"uuid_good_task_abcdefgh": {"t": 0, "e": "Task6", "p": {"tt": "Good task"}}},
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    counts = await pull_sync(client, db_session)
+
+    # The orphan checklist is silently skipped inside _apply_checklist,
+    # but the loop still counts it by action type. Key assertion: the
+    # valid task after the skip was still applied successfully.
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_good_task_abcdefgh"))
+    assert result.scalar_one().title == "Good task"
