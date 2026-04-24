@@ -11,7 +11,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+The API is available at `http://localhost:3117`. Interactive docs at `http://localhost:3117/docs`.
 
 ## Configuration
 
@@ -62,7 +62,7 @@ GET    /health              # Health check (no auth required)
 ### Create a task
 
 ```sh
-curl -X POST http://localhost:8000/api/tasks \
+curl -X POST http://localhost:3117/api/tasks \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"title": "Buy milk", "schedule": 1}'
@@ -71,7 +71,7 @@ curl -X POST http://localhost:8000/api/tasks \
 ### Update a task
 
 ```sh
-curl -X PATCH http://localhost:8000/api/tasks/{uuid} \
+curl -X PATCH http://localhost:3117/api/tasks/{uuid} \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"status": 3}'
