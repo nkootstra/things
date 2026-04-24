@@ -1,10 +1,13 @@
 services:
   api:
-    build: .
+    image: ghcr.io/nkootstra/things-api:latest
     ports:
       - "3117:8000"
-    env_file:
-      - .env
+    environment:
+      - API_KEY=${API_KEY}
+      - THINGS_EMAIL=${THINGS_EMAIL}
+      - THINGS_PASSWORD=${THINGS_PASSWORD}
+      - DATABASE_URL=sqlite+aiosqlite:///app/data/things.db
     volumes:
       - things-data:/app/data
 

@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    ports:
+      - "3117:8000"
+    env_file:
+      - .env
+    volumes:
+      - things-data:/app/data
+
+volumes:
+  things-data:
