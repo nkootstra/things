@@ -58,6 +58,31 @@ async def sync_status(session: AsyncSession = Depends(get_session)):
     }
 
 
+@router.post("/sync")
+async def trigger_sync(session: AsyncSession = Depends(get_session)):
+    """Manually trigger a full pull + push sync cycle."""
+    from things_api.cloud.client import ThingsCloudClient
+    from things_api.cloud.sync import pull_sync, push_sync
+    from things_api.config import settings as cfg
+
+    if not cfg.things_email or not cfg.things_password:
+        raise HTTPException(status_code=503, detail="Things Cloud credentials not configured")
+
+    # Rate limit: check last sync was >60s ago
+    result = await session.execute(select(SyncState).where(SyncState.id == 1))
+    state = result.scalar_one_or_none()
+    if state and state.last_sync_at:
+        elapsed = time.time() - state.last_sync_at
+        if elapsed < 60:
+            raise HTTPException(status_code=429, detail=f"Rate limited. Try again in {int(60 - elapsed)}s")
+
+    client = ThingsCloudClient(email=cfg.things_email, password=cfg.things_password)
+    pull_result = await pull_sync(client, session)
+    push_result = await push_sync(client, session)
+
+    return {"pull": pull_result, "push": push_result}
+
+
 def _task_to_dict(t: Task) -> dict:
     return {
         "uuid": t.uuid,
