@@ -4,6 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 COPY pyproject.toml uv.lock* README.md ./
+COPY packages/things-sdk/ packages/things-sdk/
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/ src/

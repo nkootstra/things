@@ -31,7 +31,7 @@ def test_routes_depend_on_service_contracts_not_concrete_classes():
 
 def test_sdk_does_not_import_things_api():
     """SDK core must not depend on the API layer (except config, which is a known seam)."""
-    sdk_root = Path("src/things_sdk")
+    sdk_root = Path("packages/things-sdk/src/things_sdk")
     allowed_api_imports = {"things_api.config"}
     violations: list[str] = []
 

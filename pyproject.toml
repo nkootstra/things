@@ -8,11 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "things-sdk",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-    "sqlalchemy[asyncio]>=2.0",
-    "aiosqlite>=0.21",
-    "httpx>=0.28",
     "pydantic-settings>=2.7",
 ]
 
@@ -38,3 +36,9 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.uv.sources]
+things-sdk = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/things-sdk"]

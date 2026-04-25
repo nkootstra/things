@@ -128,7 +128,7 @@ uv run alembic upgrade head
 docker compose up -d
 ```
 
-The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts. The `docker-compose.yml` pulls the published image from `ghcr.io/nkootstra/things-api`.
+The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts. The `docker-compose.yml` pulls the published image from `ghcr.io/nkootstra/things`.
 
 For local development, build from source instead:
 
@@ -150,15 +150,18 @@ For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS ter
 Releases are fully automated via GitHub Actions. Pushing a version tag triggers the pipeline:
 
 ```
-preflight (tests) -> build (Docker image) -> release (GitHub release)
+preflight (tests) ─┬─▶ build (Docker image) ─▶ release (GitHub release)
+                   └─▶ publish-sdk (PyPI)
 ```
 
 To release:
 
 ```sh
-# 1. Update the version in pyproject.toml
+# 1. Update versions in both pyproject.toml files
+#    - Root pyproject.toml (things-api version)
+#    - packages/things-sdk/pyproject.toml (things-sdk version)
 # 2. Commit the version bump
-git add pyproject.toml
+git add pyproject.toml packages/things-sdk/pyproject.toml
 git commit -m "release: v0.2.0"
 
 # 3. Tag and push
@@ -168,24 +171,71 @@ git push && git push --tags
 
 This will:
 - Run all tests (preflight gate)
-- Build and push the Docker image to `ghcr.io/nkootstra/things-api` with tags `0.2.0`, `0.2`, and `latest`
+- Build and push the Docker image to `ghcr.io/nkootstra/things` with tags `0.2.0`, `0.2`, and `latest`
+- Publish `things-sdk` to PyPI
 - Create a GitHub release with auto-generated release notes
+
+> **Note:** PyPI publishing uses [trusted publishers](https://docs.pypi.org/trusted-publishers/). You must configure the GitHub Actions publisher for `things-sdk` on PyPI before the first publish.
 
 ## Project Structure
 
+This project is a monorepo with two packages:
+
+| Package | Path | Description |
+|---|---|---|
+| `things-sdk` | `packages/things-sdk/` | Reusable core library — models, cloud client, sync engine, task operations |
+| `things-api` | root | FastAPI HTTP service built on top of the SDK |
+
+You can use them together (run the API) or install only the SDK for scripts, CLIs, or other integrations.
+
+### SDK standalone usage
+
+```python
+from things_sdk import ThingsClient, TaskService, configure_sync, create_engine_and_session, init_db, pull_sync
+
+engine, session_factory = create_engine_and_session("sqlite+aiosqlite:///data/things.db")
+await init_db(engine)
+configure_sync(my_config)
+
+client = ThingsClient(email="...", password="...")
+async with session_factory() as session:
+    await pull_sync(client, session)
+    tasks = await TaskService().list_tasks(session)
+await client.close()
 ```
-src/things_api/
-├── main.py              # FastAPI app, lifespan, scheduler wiring
-├── config.py            # pydantic-settings configuration
-├── auth.py              # API key authentication
-├── api/
-│   └── routes.py        # All API endpoints
+
+See [`packages/things-sdk/README.md`](packages/things-sdk/README.md) for full SDK documentation.
+
+### Directory layout
+
+```
+packages/things-sdk/src/things_sdk/   # SDK (reusable core)
+├── __init__.py              # Public API exports
+├── protocols.py             # CloudClientProtocol, SyncConfig
+├── tasks.py                 # TaskService
 ├── cloud/
-│   ├── client.py        # Things Cloud HTTP client
-│   ├── schema.py        # Wire format Pydantic models
-│   ├── sync.py          # Pull and push sync engines
-│   └── scheduler.py     # Background sync loop
+│   ├── client.py            # ThingsCloudClient
+│   ├── handlers.py          # Entity handler strategy pattern
+│   ├── schema.py            # Wire format Pydantic models
+│   └── sync.py              # Sync engine + circuit breaker
 └── db/
-    ├── engine.py        # SQLAlchemy async engine + session
-    └── models.py        # ORM models (Task, Area, Tag, ChecklistItem, SyncState)
+    ├── engine.py            # Engine factory
+    └── models.py            # Domain models
+
+src/things_api/                       # API (HTTP adapter)
+├── main.py                  # FastAPI app, lifespan, scheduler
+├── config.py                # pydantic-settings configuration
+├── auth.py                  # API key authentication
+├── api/
+│   └── routes.py            # HTTP endpoints
+├── cloud/
+│   └── scheduler.py         # Background sync loop
+└── services/
+    ├── contracts.py          # API-layer service protocols
+    ├── health_service.py     # Readiness checks
+    ├── sync_service.py       # Manual sync orchestration
+    ├── task_service.py       # Re-exports SDK TaskService
+    ├── task_command_mapper.py# Request DTO mapping
+    ├── scheduler_leadership.py # Distributed lock
+    └── scheduler_runtime.py  # Scheduler lifecycle
 ```
