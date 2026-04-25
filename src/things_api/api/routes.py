@@ -10,10 +10,12 @@ from things_api.auth import require_api_key
 from things_api.db.engine import get_session
 from things_api.services.contracts import (
     SyncServiceProtocol,
+    TagServiceProtocol,
     TaskCommandMapperProtocol,
     TaskServiceProtocol,
 )
 from things_api.services.sync_service import get_sync_service
+from things_api.services.tag_service import get_tag_service
 from things_api.services.task_command_mapper import get_task_command_mapper
 from things_api.services.task_service import get_task_service
 
@@ -40,6 +42,95 @@ class TaskType(IntEnum):
     heading = 2
 
 
+# --- Smart-list endpoints (must be before {uuid} catch-all) ---
+
+
+@router.get("/tasks/inbox")
+async def list_inbox(
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_inbox(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/today")
+async def list_today(
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_today(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/upcoming")
+async def list_upcoming(
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_upcoming(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/anytime")
+async def list_anytime(
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_anytime(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/someday")
+async def list_someday(
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_someday(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/logbook")
+async def list_logbook(
+    since: float | None = None,
+    limit: int | None = 100,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_logbook(session, since=since, limit=limit, offset=offset)
+
+
+@router.get("/tasks/trash")
+async def list_trash(
+    limit: int | None = 100,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_trash(session, limit=limit, offset=offset)
+
+
+@router.get("/tasks/by-tag/{tag}")
+async def list_tasks_by_tag(
+    tag: str,
+    include_descendants: bool = True,
+    limit: int | None = None,
+    offset: int | None = None,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.list_tasks(
+        session, tag=tag, include_descendants=include_descendants
+    )
+
+
+# --- Standard task endpoints ---
 
 @router.get("/tasks")
 async def list_tasks(
@@ -65,6 +156,38 @@ async def get_task_checklist(
     task_service: TaskServiceProtocol = Depends(get_task_service),
 ):
     return await task_service.get_task_checklist(session, uuid)
+
+
+class ChecklistItemCreate(BaseModel):
+    title: str
+
+
+@router.post("/tasks/{uuid}/checklist", status_code=201)
+async def create_checklist_item(
+    uuid: str,
+    body: ChecklistItemCreate,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.create_checklist_item(session, task_uuid=uuid, title=body.title)
+
+
+@router.post("/checklist/{uuid}/complete")
+async def complete_checklist_item(
+    uuid: str,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.complete_checklist_item(session, uuid)
+
+
+@router.post("/checklist/{uuid}/uncomplete")
+async def uncomplete_checklist_item(
+    uuid: str,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.uncomplete_checklist_item(session, uuid)
 
 
 @router.get("/areas")
@@ -115,7 +238,10 @@ class TaskCreate(BaseModel):
     contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    start_bucket: int | None = None  # 0=morning (default), 1=evening
     reminder_time: int | None = None
+    tags: list[str] | None = None
+    auto_create_tags: bool = False
 
 
 class TaskUpdate(BaseModel):
@@ -130,7 +256,10 @@ class TaskUpdate(BaseModel):
     contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    start_bucket: int | None = None
     reminder_time: int | None = None
+    tags: list[str] | None = None
+    auto_create_tags: bool = False
 
 
 @router.post("/tasks", status_code=201)
@@ -173,4 +302,51 @@ async def delete_task(
     task_service: TaskServiceProtocol = Depends(get_task_service),
 ):
     await task_service.delete_task(session, uuid)
+    return Response(status_code=204)
+
+
+# --- Tag endpoints ---
+
+
+class TagCreate(BaseModel):
+    title: str
+    parent: str | None = None
+    shortcut: str | None = None
+
+
+class TagUpdate(BaseModel):
+    title: str | None = None
+    parent: str | None = None
+    shortcut: str | None = None
+
+
+@router.post("/tags", status_code=201)
+async def create_tag(
+    body: TagCreate,
+    session: AsyncSession = Depends(get_session),
+    tag_service: TagServiceProtocol = Depends(get_tag_service),
+):
+    return await tag_service.create_tag(
+        session, title=body.title, parent=body.parent, shortcut=body.shortcut
+    )
+
+
+@router.patch("/tags/{uuid}")
+async def update_tag(
+    uuid: str,
+    body: TagUpdate,
+    session: AsyncSession = Depends(get_session),
+    tag_service: TagServiceProtocol = Depends(get_tag_service),
+):
+    kwargs = body.model_dump(exclude_unset=True)
+    return await tag_service.update_tag(session, uuid, **kwargs)
+
+
+@router.delete("/tags/{uuid}", status_code=204)
+async def delete_tag(
+    uuid: str,
+    session: AsyncSession = Depends(get_session),
+    tag_service: TagServiceProtocol = Depends(get_tag_service),
+):
+    await tag_service.delete_tag(session, uuid)
     return Response(status_code=204)

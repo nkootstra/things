@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 from xml.etree import ElementTree
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_sdk.cloud.handlers import EntityHandlerRegistry, default_registry
@@ -20,7 +20,7 @@ from things_sdk.cloud.schema import (
     ACTION_MODIFIED,
 )
 from things_sdk.protocols import CloudClientProtocol, SyncConfig
-from things_sdk.db.models import SyncState, Task
+from things_sdk.db.models import SyncState, Tag, Task, TaskTag, ChecklistItem
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +65,32 @@ async def _with_retry(op_name: str, fn: Callable[[], Awaitable[T]]) -> T:
 
 
 def parse_notes(raw_notes: str | dict | None) -> str:
+    """Parse notes from Things Cloud wire format.
+
+    Things3 sends notes in several formats:
+    - Simple text: {"_t": "tx", "ch": 0, "v": "<text>", "t": 1}
+    - Rich text with paragraphs: {"_t": "tx", "t": 2, "ps": [{"r": "<text>", ...}]}
+    - Clear notes: {"_t": "tx", "t": 0, "diag": "apply"}
+    - Legacy XML: '<note xml:space="preserve">text</note>'
+    - Plain string
+    """
     if not raw_notes:
         return ""
-    # Things Cloud sends notes as either XML string or rich text dict
-    # Dict format: {'_t': 'tx', 'ch': 0, 'v': '<text>', 't': 1}
     if isinstance(raw_notes, dict):
-        return str(raw_notes.get("v", ""))
+        # Check for clear-notes signal
+        if raw_notes.get("t") == 0 and raw_notes.get("diag") == "apply":
+            return ""
+        # Simple text format
+        if "v" in raw_notes:
+            return str(raw_notes["v"])
+        # Rich text with paragraphs
+        if "ps" in raw_notes:
+            parts = []
+            for p in raw_notes["ps"]:
+                if isinstance(p, dict) and "r" in p:
+                    parts.append(p["r"])
+            return "".join(parts)
+        return ""
     try:
         root = ElementTree.fromstring(raw_notes)
         return root.text or ""
@@ -207,46 +227,158 @@ async def pull_sync(
     return counts
 
 
-def _task_to_wire(task: Task) -> dict:
-    """Convert a Task to Things Cloud wire format."""
-    payload: dict = {}
-    if task.title:
-        payload["tt"] = task.title
-    if task.notes:
-        payload["nt"] = f'<note xml:space="preserve">{task.notes}</note>'
-    if task.status is not None:
-        payload["ss"] = task.status
-    if task.schedule is not None:
-        payload["st"] = task.schedule
-    if task.type is not None:
-        payload["tp"] = 1 if task.type == 1 else 0
-    if task.trashed is not None:
-        payload["tr"] = task.trashed
-    if task.index is not None:
-        payload["ix"] = task.index
-    if task.area_uuid:
-        payload["ar"] = [task.area_uuid]
-    if task.project_uuid:
-        payload["pr"] = [task.project_uuid]
-    if task.contact_uuid:
-        payload["do"] = [task.contact_uuid]
-    if task.deadline is not None:
-        payload["dd"] = task.deadline
-    if task.start_date is not None:
-        payload["sr"] = task.start_date
-    if task.creation_date is not None:
-        payload["cd"] = task.creation_date
-    if task.modification_date is not None:
-        payload["md"] = task.modification_date
+def _to_day_int(ts: float | None) -> int | None:
+    """Convert a timestamp to a day-precision integer.
+
+    Things3 sends date-only fields (sr, dd, tir) as integers (epoch seconds
+    truncated to midnight). Sending floats crashes Things3.
+    """
+    if ts is None:
+        return None
+    return int(ts)
+
+
+def _task_to_wire(task: Task, tag_uuids: list[str] | None = None) -> list[dict]:
+    """Convert a Task to Things Cloud wire format items.
+
+    Returns a list of wire items (usually 1, but 2 when a new task has fields
+    that must be applied as a separate update — e.g. deadline, completion_date).
+
+    Things3 merge engine protocol:
+    - t=0 (ACTION_CREATED): full payload, but deadline/completion crash if included
+    - t=1 (ACTION_MODIFIED): partial payload with only changed fields
+    - Fields like dd (deadline) and sp (completion) must be sent as a t=1 update
+      AFTER the t=0 create, matching how Things3 itself operates.
+    """
+    sr_int = _to_day_int(task.start_date)
+    dd_int = _to_day_int(task.deadline)
+    notes_val: dict = {"_t": "tx", "ch": 0, "v": task.notes or "", "t": 1}
+
+    action = ACTION_CREATED if task.is_new else ACTION_MODIFIED
+
+    payload: dict = {
+        "tp": 1 if task.type == 1 else 0,
+        "sr": sr_int,
+        "dds": None,
+        "rt": [],
+        "rmd": None,
+        "ss": task.status if task.status is not None else 0,
+        "tr": task.trashed if task.trashed is not None else False,
+        "dl": [],
+        "icp": False,
+        "st": task.schedule if task.schedule is not None else 0,
+        "ar": [task.area_uuid] if task.area_uuid else [],
+        "tt": task.title or "",
+        "do": 0,
+        "lai": None,
+        "tir": sr_int,
+        "tg": [],  # Tags sent separately for creates (see below)
+        "agr": [task.heading_uuid] if task.heading_uuid else [],
+        "ix": task.index if task.index is not None else 0,
+        "cd": task.creation_date,
+        "lt": False,
+        "icc": 0,
+        "ti": task.today_index if task.today_index is not None else 0,
+        "md": task.modification_date,
+        "dd": None,  # Deadline sent separately for creates (see below)
+        "ato": None,
+        "nt": notes_val,
+        "icsd": None,
+        "pr": [task.project_uuid] if task.project_uuid else [],
+        "rp": None,
+        "acrd": None,
+        "sp": None,  # Completion sent separately for creates (see below)
+        "sb": task.start_bucket if task.start_bucket is not None else 0,
+        "rr": None,
+        "xx": {"sn": {}, "_t": "oo"},
+    }
+
     if task.reminder_time is not None:
         payload["al"] = task.reminder_time
-    payload["lp"] = 1 if task.leaves_tombstone else 0
 
-    return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
+    # For modifications (not creates), include all fields inline
+    if action == ACTION_MODIFIED:
+        payload["dd"] = dd_int
+        payload["sp"] = task.completion_date
+        payload["tg"] = tag_uuids if tag_uuids is not None else []
+
+    items = [{task.uuid: {"t": action, "e": "Task6", "p": payload}}]
+
+    # For creates, fields that crash the merge engine must be sent as follow-up updates:
+    # dd (deadline), sp (completion), tg (tags)
+    if action == ACTION_CREATED:
+        update_fields: dict = {}
+        if dd_int is not None:
+            update_fields["dd"] = dd_int
+        if task.completion_date is not None:
+            update_fields["sp"] = task.completion_date
+        if tag_uuids:
+            update_fields["tg"] = tag_uuids
+        if update_fields:
+            update_fields["md"] = task.modification_date
+            items.append({task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": update_fields}})
+
+    return items
+
+
+def _tag_to_wire(tag: Tag) -> dict:
+    """Convert a Tag to Things Cloud wire format.
+
+    Matches the full schema that Things3 sends.
+    Uses t=0 for new tags, t=1 for modifications.
+    """
+    action = ACTION_CREATED if tag.is_new else ACTION_MODIFIED
+
+    payload: dict = {
+        "tt": tag.title or "",
+        "sh": tag.shortcut,
+        "pn": [tag.parent_uuid] if tag.parent_uuid else [],
+        "ix": tag.index if tag.index is not None else 0,
+        "xx": {"sn": {}, "_t": "oo"},
+    }
+    return {tag.uuid: {"t": action, "e": "Tag4", "p": payload}}
+
+
+def _tag_delete_wire(tag_uuid: str) -> dict:
+    """Create a deletion wire item for a Tag."""
+    return {tag_uuid: {"t": ACTION_DELETED, "e": "Tag4", "p": {}}}
+
+
+def _checklist_item_to_wire(item: ChecklistItem) -> dict:
+    """Convert a ChecklistItem to Things Cloud wire format."""
+    action = ACTION_CREATED if item.is_new else ACTION_MODIFIED
+
+    if action == ACTION_CREATED:
+        payload: dict = {
+            "tt": item.title or "",
+            "ss": item.status if item.status is not None else 0,
+            "ix": item.index if item.index is not None else 0,
+            "sp": item.stop_date,
+            "cd": item.creation_date,
+            "md": item.modification_date,
+            "ts": [item.task_uuid] if item.task_uuid else [],
+            "lt": False,
+            "xx": {"sn": {}, "_t": "oo"},
+        }
+    else:
+        # Partial update — only changed fields
+        payload = {"md": item.modification_date}
+        if item.status == 3:
+            payload["ss"] = 3
+            payload["sp"] = item.stop_date
+        elif item.status == 0:
+            payload["ss"] = 0
+            payload["sp"] = None
+
+    return {item.uuid: {"t": action, "e": "ChecklistItem3", "p": payload}}
 
 
 async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[str, int]:
-    """Push locally modified tasks to Things Cloud."""
+    """Push locally modified tags and tasks to Things Cloud.
+
+    Ordering: tag creates/updates first, then tasks, then tag deletes.
+    This avoids cloud-side orphan references.
+    """
     state = await _get_or_create_sync_state(session)
     is_half_open_probe = _prepare_circuit_for_attempt(state)
 
@@ -254,23 +386,77 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
         history_key = await client.authenticate()
         state.history_key = history_key
 
+    # Collect pending tags (creates/updates and deletes separately)
+    result = await session.execute(
+        select(Tag).where((Tag.pending_push == True) & (Tag.pending_delete == False))
+    )
+    pending_tags = result.scalars().all()
+
+    result = await session.execute(
+        select(Tag).where(Tag.pending_delete == True)
+    )
+    pending_tag_deletes = result.scalars().all()
+
+    # Collect pending tasks
     result = await session.execute(select(Task).where(Task.pending_push == True))
     pending_tasks = result.scalars().all()
 
-    counts: dict[str, int] = {"pushed": 0}
+    # Collect pending checklist items
+    result = await session.execute(select(ChecklistItem).where(ChecklistItem.pending_push == True))
+    pending_checklist_items = result.scalars().all()
 
-    if not pending_tasks:
+    counts: dict[str, int] = {"pushed": 0, "tags_pushed": 0, "tags_deleted": 0, "checklist_pushed": 0}
+
+    if not pending_tasks and not pending_tags and not pending_tag_deletes and not pending_checklist_items:
         _record_sync_success(state, phase="push")
         await session.commit()
         return counts
 
-    items = [_task_to_wire(t) for t in pending_tasks]
+    # Batch-load tag associations for all pending tasks
+    task_tag_map: dict[str, list[str]] = {}
+    if pending_tasks:
+        task_uuids = [t.uuid for t in pending_tasks]
+        tag_result = await session.execute(
+            select(TaskTag).where(TaskTag.task_uuid.in_(task_uuids))
+        )
+        for tt in tag_result.scalars():
+            task_tag_map.setdefault(tt.task_uuid, []).append(tt.tag_uuid)
+
+    # Build commit batches. Items sharing a UUID (e.g. create + deadline update)
+    # must go in separate commits because JSON doesn't allow duplicate keys.
+    # Batch 1: tag creates/updates + task creates (dd/sp stripped)
+    # Batch 2: follow-up updates for tasks that needed two-step (deadline, completion)
+    # Batch 3: tag deletes
+    batch_main: list[dict] = []
+    batch_followup: list[dict] = []
+
+    batch_main.extend(_tag_to_wire(t) for t in pending_tags)
+    for t in pending_tasks:
+        wire_items = _task_to_wire(t, tag_uuids=task_tag_map.get(t.uuid, []))
+        batch_main.append(wire_items[0])  # create or full modify
+        if len(wire_items) > 1:
+            batch_followup.extend(wire_items[1:])  # follow-up updates
+    batch_main.extend(_checklist_item_to_wire(ci) for ci in pending_checklist_items)
+
+    batch_tag_deletes: list[dict] = [_tag_delete_wire(t.uuid) for t in pending_tag_deletes]
 
     try:
-        new_index = await _with_retry(
-            "push_sync.commit",
-            lambda: client.commit(items, ancestor_index=state.head_index),
-        )
+        # Commit main batch
+        if batch_main or batch_tag_deletes:
+            all_main = batch_main + batch_tag_deletes
+            new_index = await _with_retry(
+                "push_sync.commit",
+                lambda: client.commit(all_main, ancestor_index=state.head_index),
+            )
+            state.head_index = new_index
+
+        # Commit follow-up batch (deadline/completion updates)
+        if batch_followup:
+            new_index = await _with_retry(
+                "push_sync.commit_followup",
+                lambda: client.commit(batch_followup, ancestor_index=state.head_index),
+            )
+            state.head_index = new_index
     except Exception as e:
         state.sync_status = "push_error"
         state.last_error = str(e)
@@ -278,10 +464,22 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
         await session.commit()
         raise
 
+    for tag in pending_tags:
+        tag.pending_push = False
+        tag.is_new = False
+
+    for tag in pending_tag_deletes:
+        await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == tag.uuid))
+        await session.delete(tag)
+
     for task in pending_tasks:
         task.pending_push = False
+        task.is_new = False
 
-    state.head_index = new_index
+    for ci in pending_checklist_items:
+        ci.pending_push = False
+        ci.is_new = False
+
     state.last_sync_at = time.time()
     state.sync_status = "synced"
     state.last_error = None
@@ -289,4 +487,7 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
 
     await session.commit()
     counts["pushed"] = len(pending_tasks)
+    counts["tags_pushed"] = len(pending_tags)
+    counts["tags_deleted"] = len(pending_tag_deletes)
+    counts["checklist_pushed"] = len(pending_checklist_items)
     return counts

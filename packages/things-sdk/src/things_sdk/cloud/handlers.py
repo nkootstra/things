@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_sdk.cloud.schema import (
@@ -18,7 +18,7 @@ from things_sdk.cloud.schema import (
     TaskPayload,
     TombstonePayload,
 )
-from things_sdk.db.models import Area, ChecklistItem, Tag, Task
+from things_sdk.db.models import Area, ChecklistItem, Tag, Task, TaskTag
 
 logger = logging.getLogger(__name__)
 
@@ -53,44 +53,60 @@ class TaskHandler(EntityHandler):
             task = Task(uuid=uuid)
             session.add(task)
 
-        if payload.title is not None:
-            task.title = payload.title
-        if payload.notes is not None:
+        # Use model_fields_set to distinguish "not sent" from "sent as null".
+        # A partial update like {"sp": null} explicitly clears completion_date.
+        sent = payload.model_fields_set
+
+        if "title" in sent:
+            task.title = payload.title or ""
+        if "notes" in sent:
             task.notes = parse_notes(payload.notes)
-        if payload.status is not None:
+        if "status" in sent and payload.status is not None:
             task.status = payload.status
-        if payload.schedule is not None:
+        if "schedule" in sent and payload.schedule is not None:
             task.schedule = payload.schedule
-        if payload.is_project is not None:
+        if "is_project" in sent and payload.is_project is not None:
             task.type = 1 if payload.is_project else 0
-        if payload.trashed is not None:
+        if "trashed" in sent and payload.trashed is not None:
             task.trashed = payload.trashed
-        if payload.index is not None:
+        if "index" in sent and payload.index is not None:
             task.index = payload.index
-        if payload.today_index is not None:
+        if "today_index" in sent and payload.today_index is not None:
             task.today_index = payload.today_index
-        if payload.creation_date is not None:
+        if "start_bucket" in sent:
+            task.start_bucket = payload.start_bucket or 0
+        if "creation_date" in sent:
             task.creation_date = payload.creation_date
-        if payload.modification_date is not None:
+        if "modification_date" in sent:
             task.modification_date = payload.modification_date
-        if payload.start_date is not None:
-            task.start_date = payload.start_date
-        if payload.deadline is not None:
-            task.deadline = payload.deadline
-        if payload.completion_date is not None:
-            task.completion_date = payload.completion_date
-        if payload.reminder_time is not None:
+        if "start_date" in sent:
+            task.start_date = payload.start_date  # can be None (clear)
+        if "deadline" in sent:
+            task.deadline = payload.deadline  # can be None (clear)
+        if "completion_date" in sent:
+            task.completion_date = payload.completion_date  # can be None (uncomplete)
+        if "reminder_time" in sent:
             task.reminder_time = payload.reminder_time
-        if payload.leaves_tombstone is not None:
-            task.leaves_tombstone = bool(payload.leaves_tombstone)
+        if "leaves_tombstone" in sent:
+            task.leaves_tombstone = bool(payload.leaves_tombstone) if payload.leaves_tombstone is not None else False
         if payload.area_ids and payload.area_ids:
             task.area_uuid = payload.area_ids[0]
         if payload.project_ids and payload.project_ids:
             task.project_uuid = payload.project_ids[0]
         if payload.heading_ids and payload.heading_ids:
             task.heading_uuid = payload.heading_ids[0]
-        if payload.contact_ids and payload.contact_ids:
-            task.contact_uuid = payload.contact_ids[0]
+        if payload.contact_ids is not None:
+            if isinstance(payload.contact_ids, list) and payload.contact_ids:
+                task.contact_uuid = payload.contact_ids[0]
+            # int value (0) means no contact — ignore
+
+        # Replace-set tag associations (cloud is source of truth)
+        if payload.tag_ids is not None:
+            await session.execute(
+                delete(TaskTag).where(TaskTag.task_uuid == uuid)
+            )
+            for tag_uuid in payload.tag_ids:
+                session.add(TaskTag(task_uuid=uuid, tag_uuid=tag_uuid))
 
 
 class AreaHandler(EntityHandler):
@@ -128,6 +144,7 @@ class TagHandler(EntityHandler):
 
         if action == ACTION_DELETED:
             if tag:
+                await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == uuid))
                 await session.delete(tag)
             return
 
@@ -167,14 +184,15 @@ class ChecklistItemHandler(EntityHandler):
             item = ChecklistItem(uuid=uuid, task_uuid=task_ref)
             session.add(item)
 
-        if payload.title is not None:
-            item.title = payload.title
-        if payload.status is not None:
+        sent = payload.model_fields_set
+        if "title" in sent:
+            item.title = payload.title or ""
+        if "status" in sent and payload.status is not None:
             item.status = payload.status
-        if payload.index is not None:
+        if "index" in sent and payload.index is not None:
             item.index = payload.index
-        if payload.stop_date is not None:
-            item.stop_date = payload.stop_date
+        if "stop_date" in sent:
+            item.stop_date = payload.stop_date  # can be None (uncomplete)
         if task_ref:
             item.task_uuid = task_ref
 
@@ -188,6 +206,10 @@ class TombstoneHandler(EntityHandler):
     async def apply(self, session: AsyncSession, uuid: str, action: int, payload: TombstonePayload) -> None:
         # A tombstone record means the referenced object was hard-deleted.
         # We look up the entity by uuid and remove it from each table.
+        # Clean up TaskTag associations if it's a task or tag.
+        await session.execute(delete(TaskTag).where(TaskTag.task_uuid == uuid))
+        await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == uuid))
+
         for model_cls in (Task, Area, Tag, ChecklistItem):
             result = await session.execute(
                 select(model_cls).where(model_cls.uuid == uuid)  # type: ignore[attr-defined]

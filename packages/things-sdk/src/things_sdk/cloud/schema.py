@@ -19,6 +19,7 @@ class TaskPayload(BaseModel):
     creation_date: float | None = Field(None, alias="cd")
     modification_date: float | None = Field(None, alias="md")
     start_date: float | None = Field(None, alias="sr")
+    start_bucket: int | None = Field(None, alias="sb")
     deadline: float | None = Field(None, alias="dd")
     completion_date: float | None = Field(None, alias="sp")
     reminder_time: int | None = Field(None, alias="al")
@@ -27,7 +28,7 @@ class TaskPayload(BaseModel):
     project_ids: list[str] | None = Field(None, alias="pr")
     tag_ids: list[str] | None = Field(None, alias="tg")
     heading_ids: list[str] | None = Field(None, alias="agr")
-    contact_ids: list[str] | None = Field(None, alias="do")
+    contact_ids: list[str] | int | None = Field(None, alias="do")
 
     model_config = {"populate_by_name": True}
 
