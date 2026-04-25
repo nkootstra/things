@@ -47,3 +47,17 @@ def test_sdk_does_not_import_things_api():
                         violations.append(f"{py_file}:{node.lineno} imports {alias.name}")
 
     assert not violations, f"SDK imports API layer:\n" + "\n".join(violations)
+
+
+def test_examples_only_use_public_sdk_surface():
+    """Examples must only import from things_sdk top-level public API."""
+    examples_root = Path("examples")
+    violations: list[str] = []
+
+    for py_file in examples_root.rglob("*.py"):
+        tree = ast.parse(py_file.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("things_sdk."):
+                violations.append(f"{py_file}:{node.lineno} imports internal {node.module}")
+
+    assert not violations, "Examples import SDK internals instead of public API:\n" + "\n".join(violations)

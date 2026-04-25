@@ -86,6 +86,22 @@ asyncio.run(main())
 | `SyncConfig` | Protocol for sync configuration |
 | `EntityHandler` | Strategy pattern for extending sync to new entity types |
 
+## Examples
+
+See the [`examples/sdk/`](../../examples/sdk/) directory for runnable examples:
+
+| Example | Description |
+|---|---|
+| [`list_tasks.py`](../../examples/sdk/list_tasks.py) | Sync from Things Cloud, then print all pending tasks |
+| [`sync_once.py`](../../examples/sdk/sync_once.py) | Run a single pull + push sync cycle |
+| [`create_task.py`](../../examples/sdk/create_task.py) | Create a task locally and push it to Things Cloud |
+
+All examples use the public `things_sdk` API:
+
+```sh
+THINGS_EMAIL=you@example.com THINGS_PASSWORD=secret uv run examples/sdk/list_tasks.py
+```
+
 ## Smoke-tested release artifacts
 
 Releases validate that the SDK is not just built, but actually installable and usable:
