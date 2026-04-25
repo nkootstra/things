@@ -617,7 +617,7 @@ wheels = [
 
 [[package]]
 name = "things-api"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -669,7 +669,7 @@ dev = [
 
 [[package]]
 name = "things-sdk"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "packages/things-sdk" }
 dependencies = [
     { name = "aiosqlite" },
