@@ -11,6 +11,7 @@ import asyncio
 import os
 
 from things_sdk import (
+    DefaultSyncConfig,
     TaskService,
     ThingsClient,
     configure_sync,
@@ -18,13 +19,6 @@ from things_sdk import (
     init_db,
     pull_sync,
 )
-
-
-class DefaultSyncConfig:
-    sync_retry_attempts = 3
-    sync_retry_base_seconds = 0.25
-    sync_circuit_breaker_failures = 3
-    sync_circuit_breaker_cooldown_seconds = 60.0
 
 
 async def main() -> None:

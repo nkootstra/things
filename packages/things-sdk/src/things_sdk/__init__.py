@@ -33,7 +33,7 @@ from things_sdk.cloud.sync import (
 from things_sdk.db.engine import create_engine_and_session, init_db
 from things_sdk.db.models import Area, Base, ChecklistItem, SyncState, Tag, Task
 from things_sdk.errors import EntityNotFoundError, ThingsSDKError
-from things_sdk.protocols import CloudClientProtocol, SyncConfig
+from things_sdk.protocols import CloudClientProtocol, DefaultSyncConfig, SyncConfig
 from things_sdk.tasks import TaskService
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "parse_notes",
     "SyncCircuitOpenError",
     "SyncConfig",
+    "DefaultSyncConfig",
     # Database
     "create_engine_and_session",
     "init_db",
