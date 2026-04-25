@@ -128,7 +128,7 @@ uv run alembic upgrade head
 docker compose up -d
 ```
 
-The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts. The `docker-compose.yml` pulls the published image from `ghcr.io/nkootstra/things-api`.
+The Docker setup uses a named volume (`things-data`) to persist the SQLite database across container restarts. The `docker-compose.yml` pulls the published image from `ghcr.io/nkootstra/things`.
 
 For local development, build from source instead:
 
@@ -171,7 +171,7 @@ git push && git push --tags
 
 This will:
 - Run all tests (preflight gate)
-- Build and push the Docker image to `ghcr.io/nkootstra/things-api` with tags `0.2.0`, `0.2`, and `latest`
+- Build and push the Docker image to `ghcr.io/nkootstra/things` with tags `0.2.0`, `0.2`, and `latest`
 - Publish `things-sdk` to PyPI
 - Create a GitHub release with auto-generated release notes
 

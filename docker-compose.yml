@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/nkootstra/things-api:latest
+    image: ghcr.io/nkootstra/things:latest
     ports:
       - "3117:8000"
     environment:
