@@ -1,5 +1,7 @@
-from sqlalchemy import Boolean, Column, Float, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase
+from __future__ import annotations
+
+from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -9,74 +11,74 @@ class Base(DeclarativeBase):
 class Task(Base):
     __tablename__ = "task"
 
-    uuid = Column(String(22), primary_key=True)
-    title = Column(Text, nullable=False, default="")
-    notes = Column(Text, default="")
-    type = Column(Integer, default=0)  # 0=task, 1=project, 2=heading
-    status = Column(Integer, default=0)  # 0=pending, 2=cancelled, 3=completed
-    schedule = Column(Integer, default=0)  # 0=inbox, 1=anytime, 2=someday
-    trashed = Column(Boolean, default=False)
-    index = Column(Integer, default=0)
-    today_index = Column(Integer, default=0)
+    uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[int] = mapped_column(Integer, default=0)
+    schedule: Mapped[int] = mapped_column(Integer, default=0)
+    trashed: Mapped[bool] = mapped_column(Boolean, default=False)
+    index: Mapped[int] = mapped_column(Integer, default=0)
+    today_index: Mapped[int] = mapped_column(Integer, default=0)
 
-    creation_date = Column(Float, nullable=True)
-    modification_date = Column(Float, nullable=True)
-    start_date = Column(Float, nullable=True)
-    deadline = Column(Float, nullable=True)
-    completion_date = Column(Float, nullable=True)
+    creation_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    modification_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    start_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deadline: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completion_date: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    area_uuid = Column(String(22), nullable=True)
-    project_uuid = Column(String(22), nullable=True)
-    heading_uuid = Column(String(22), nullable=True)
+    area_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
+    project_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
+    heading_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
 
-    pending_push = Column(Boolean, default=False)
-    local_modified_at = Column(Float, nullable=True)
+    pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
+    local_modified_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class Area(Base):
     __tablename__ = "area"
 
-    uuid = Column(String(22), primary_key=True)
-    title = Column(Text, nullable=False, default="")
-    visible = Column(Boolean, default=True)
-    index = Column(Integer, default=0)
+    uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    index: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Tag(Base):
     __tablename__ = "tag"
 
-    uuid = Column(String(22), primary_key=True)
-    title = Column(Text, nullable=False, default="")
-    shortcut = Column(String(10), nullable=True)
-    parent_uuid = Column(String(22), nullable=True)
-    index = Column(Integer, default=0)
+    uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    shortcut: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    parent_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
+    index: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ChecklistItem(Base):
     __tablename__ = "checklist_item"
 
-    uuid = Column(String(22), primary_key=True)
-    title = Column(Text, nullable=False, default="")
-    status = Column(Integer, default=0)
-    index = Column(Integer, default=0)
-    stop_date = Column(Float, nullable=True)
-    task_uuid = Column(String(22), nullable=True)
+    uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[int] = mapped_column(Integer, default=0)
+    index: Mapped[int] = mapped_column(Integer, default=0)
+    stop_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    task_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
 
 
 class SyncState(Base):
     __tablename__ = "sync_state"
 
-    id = Column(Integer, primary_key=True, default=1)
-    history_key = Column(String(255), nullable=True)
-    head_index = Column(Integer, default=0)
-    last_sync_at = Column(Float, nullable=True)
-    sync_status = Column(String(20), default="never_synced")
-    last_error = Column(Text, nullable=True)
-    last_pull_skipped = Column(Integer, default=0)
-    sync_errors_total = Column(Integer, default=0)
-    consecutive_sync_errors = Column(Integer, default=0)
-    circuit_open_until = Column(Float, nullable=True)
-    circuit_probe_active = Column(Boolean, default=False)
-    manual_sync_lock_until = Column(Float, nullable=True)
-    scheduler_lock_owner = Column(String(64), nullable=True)
-    scheduler_lock_until = Column(Float, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    history_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    head_index: Mapped[int] = mapped_column(Integer, default=0)
+    last_sync_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sync_status: Mapped[str] = mapped_column(String(20), default="never_synced")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_pull_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    sync_errors_total: Mapped[int] = mapped_column(Integer, default=0)
+    consecutive_sync_errors: Mapped[int] = mapped_column(Integer, default=0)
+    circuit_open_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    circuit_probe_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    manual_sync_lock_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scheduler_lock_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scheduler_lock_until: Mapped[float | None] = mapped_column(Float, nullable=True)

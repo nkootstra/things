@@ -25,20 +25,11 @@ logger = logging.getLogger(__name__)
 class EntityHandler(ABC):
     """Base class for entity-specific sync handlers."""
 
-    @property
-    @abstractmethod
-    def entity_type(self) -> str:
-        """Wire type string, e.g. 'Task6'."""
-        ...
-
-    @property
-    @abstractmethod
-    def payload_class(self) -> type[BaseModel]:
-        """Pydantic model for this entity's payload."""
-        ...
+    entity_type: str
+    payload_class: type[BaseModel]
 
     @abstractmethod
-    async def apply(self, session: AsyncSession, uuid: str, action: int, payload: BaseModel) -> None:
+    async def apply(self, session: AsyncSession, uuid: str, action: int, payload: Any) -> None:
         ...
 
 
