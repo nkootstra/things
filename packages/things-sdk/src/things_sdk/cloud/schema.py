@@ -22,10 +22,12 @@ class TaskPayload(BaseModel):
     deadline: float | None = Field(None, alias="dd")
     completion_date: float | None = Field(None, alias="sp")
     reminder_time: int | None = Field(None, alias="al")
+    leaves_tombstone: int | None = Field(None, alias="lp")
     area_ids: list[str] | None = Field(None, alias="ar")
     project_ids: list[str] | None = Field(None, alias="pr")
     tag_ids: list[str] | None = Field(None, alias="tg")
     heading_ids: list[str] | None = Field(None, alias="agr")
+    contact_ids: list[str] | None = Field(None, alias="do")
 
     model_config = {"populate_by_name": True}
 

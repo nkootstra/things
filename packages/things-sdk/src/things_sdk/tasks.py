@@ -71,6 +71,7 @@ class TaskService:
         heading_uuid: str | None,
         deadline: float | None,
         start_date: float | None,
+        reminder_time: int | None = None,
     ) -> dict:
         now = time.time()
         task = Task(
@@ -85,6 +86,7 @@ class TaskService:
             heading_uuid=heading_uuid,
             deadline=deadline,
             start_date=start_date,
+            reminder_time=reminder_time,
             creation_date=now,
             modification_date=now,
             pending_push=True,
@@ -138,6 +140,7 @@ class TaskService:
             "area_uuid": t.area_uuid,
             "project_uuid": t.project_uuid,
             "heading_uuid": t.heading_uuid,
+            "contact_uuid": t.contact_uuid,
         }
 
 

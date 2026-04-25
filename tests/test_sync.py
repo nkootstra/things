@@ -530,3 +530,36 @@ async def test_pull_sync_creates_area_with_area3(db_session):
 
     result = await db_session.execute(select(Area).where(Area.uuid == "uuid_area3_abcdefghijk"))
     assert result.scalar_one().title == "Work Area3"
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_applies_contact_uuid(db_session):
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_contact_task_abcdef": {"t": 0, "e": "Task6", "p": {
+            "tt": "Delegated task",
+            "do": ["contact_person_abcdefg"],
+        }}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    await pull_sync(client, db_session)
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_contact_task_abcdef"))
+    task = result.scalar_one()
+    assert task.contact_uuid == "contact_person_abcdefg"
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_applies_leaves_tombstone(db_session):
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_tombstone_flag_abc": {"t": 0, "e": "Task6", "p": {"tt": "Hard-deletable", "lp": 1}}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    await pull_sync(client, db_session)
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_tombstone_flag_abc"))
+    task = result.scalar_one()
+    assert task.leaves_tombstone is True

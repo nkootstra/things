@@ -398,3 +398,27 @@ async def test_trigger_sync_closes_cloud_client(authed_client, monkeypatch):
     resp = await authed_client.post("/api/sync")
     assert resp.status_code == 200
     assert closed["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_reminder_time(authed_client, db):
+    resp = await authed_client.post(
+        "/api/tasks",
+        json={"title": "Wake up", "reminder_time": 28800},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["reminder_time"] == 28800
+
+
+@pytest.mark.asyncio
+async def test_update_task_sets_reminder_time(authed_client, db):
+    task = Task(uuid="remind_upd_abcdefghijk", title="Original")
+    db.add(task)
+    await db.commit()
+
+    resp = await authed_client.patch(
+        "/api/tasks/remind_upd_abcdefghijk",
+        json={"reminder_time": 32400},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["reminder_time"] == 32400

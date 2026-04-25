@@ -114,6 +114,7 @@ class TaskCreate(BaseModel):
     heading_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    reminder_time: int | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -127,6 +128,7 @@ class TaskUpdate(BaseModel):
     heading_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    reminder_time: int | None = None
 
 
 @router.post("/tasks", status_code=201)

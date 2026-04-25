@@ -31,9 +31,11 @@ class Task(Base):
     area_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
     project_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
     heading_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
+    contact_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
 
     pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
     local_modified_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    leaves_tombstone: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Area(Base):

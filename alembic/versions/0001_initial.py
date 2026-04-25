@@ -37,9 +37,11 @@ def upgrade() -> None:
         sa.Column("area_uuid", sa.String(length=22), nullable=True),
         sa.Column("project_uuid", sa.String(length=22), nullable=True),
         sa.Column("heading_uuid", sa.String(length=22), nullable=True),
+        sa.Column("contact_uuid", sa.String(length=22), nullable=True),
         sa.Column("pending_push", sa.Boolean(), nullable=True),
         sa.Column("local_modified_at", sa.Float(), nullable=True),
         sa.Column("reminder_time", sa.Integer(), nullable=True),
+        sa.Column("leaves_tombstone", sa.Boolean(), nullable=True),
     )
 
     op.create_table(

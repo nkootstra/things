@@ -228,6 +228,8 @@ def _task_to_wire(task: Task) -> dict:
         payload["ar"] = [task.area_uuid]
     if task.project_uuid:
         payload["pr"] = [task.project_uuid]
+    if task.contact_uuid:
+        payload["do"] = [task.contact_uuid]
     if task.deadline is not None:
         payload["dd"] = task.deadline
     if task.start_date is not None:
@@ -238,6 +240,7 @@ def _task_to_wire(task: Task) -> dict:
         payload["md"] = task.modification_date
     if task.reminder_time is not None:
         payload["al"] = task.reminder_time
+    payload["lp"] = 1 if task.leaves_tombstone else 0
 
     return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
 
