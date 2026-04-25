@@ -30,6 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build local image for smoke test
+        run: docker build -t things:test .
+
+      - name: Smoke test local Docker image
+        run: ./scripts/smoke-test-docker.sh things:test
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -101,6 +107,9 @@ jobs:
 
       - name: Build SDK package
         run: uv build --package things-sdk
+
+      - name: Smoke test built SDK wheel
+        run: ./scripts/smoke-test-sdk.sh
 
       - name: Publish SDK to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

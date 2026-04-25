@@ -6,11 +6,11 @@ import time
 import uuid as uuid_mod
 from datetime import UTC, datetime
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_sdk.db.models import Area, ChecklistItem, Tag, Task
+from things_sdk.errors import EntityNotFoundError
 _STATUS_LABELS = {0: "pending", 2: "cancelled", 3: "completed"}
 _SCHEDULE_LABELS = {0: "inbox", 1: "anytime", 2: "someday"}
 _TYPE_LABELS = {0: "task", 1: "project", 2: "heading"}
@@ -27,13 +27,13 @@ class TaskService:
         result = await session.execute(select(Task).where(Task.uuid == uuid))
         task = result.scalar_one_or_none()
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise EntityNotFoundError("Task", uuid)
         return self._task_to_dict(task)
 
     async def get_task_checklist(self, session: AsyncSession, uuid: str) -> list[dict]:
         result = await session.execute(select(Task).where(Task.uuid == uuid))
         if not result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise EntityNotFoundError("Task", uuid)
 
         result = await session.execute(
             select(ChecklistItem).where(ChecklistItem.task_uuid == uuid).order_by(ChecklistItem.index)
@@ -97,7 +97,7 @@ class TaskService:
         result = await session.execute(select(Task).where(Task.uuid == uuid))
         task = result.scalar_one_or_none()
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise EntityNotFoundError("Task", uuid)
 
         for field, value in updates.items():
             setattr(task, field, value)
@@ -111,7 +111,7 @@ class TaskService:
         result = await session.execute(select(Task).where(Task.uuid == uuid))
         task = result.scalar_one_or_none()
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise EntityNotFoundError("Task", uuid)
 
         task.trashed = True
         task.modification_date = time.time()

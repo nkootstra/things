@@ -7,17 +7,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from things_sdk import (
+    Area,
     Base,
+    ChecklistItem,
     CloudClientProtocol,
+    EntityNotFoundError,
     SyncCircuitOpenError,
+    SyncState,
+    Tag,
     Task,
     TaskService,
     ThingsClient,
     ThingsCloudAuthError,
-    Area,
-    Tag,
-    ChecklistItem,
-    SyncState,
     configure_sync,
     create_engine_and_session,
     init_db,
@@ -212,6 +213,13 @@ async def test_task_service_delete(sdk_session):
 
     result = await sdk_session.execute(select(Task).where(Task.uuid == "sdk_del_task_abcdefgh"))
     assert result.scalar_one().trashed is True
+
+
+@pytest.mark.asyncio
+async def test_task_service_not_found_raises_sdk_error(sdk_session):
+    svc = TaskService()
+    with pytest.raises(EntityNotFoundError):
+        await svc.get_task(sdk_session, "missing-task")
 
 
 # --- Sync engine ---

@@ -23,6 +23,23 @@ jobs:
       - name: Run tests
         run: uv run pytest -q --tb=short
 
+  sdk-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Build SDK package
+        run: uv build --package things-sdk
+
+      - name: Smoke test built SDK wheel
+        run: ./scripts/smoke-test-sdk.sh
+
   docker:
     needs: test
     runs-on: ubuntu-latest
@@ -31,6 +48,12 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Build local image for smoke test
+        run: docker build -t things:test .
+
+      - name: Smoke test local Docker image
+        run: ./scripts/smoke-test-docker.sh things:test
 
       - uses: docker/setup-qemu-action@v3
 
