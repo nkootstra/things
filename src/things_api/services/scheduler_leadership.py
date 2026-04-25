@@ -7,7 +7,7 @@ import time
 
 from sqlalchemy import or_, select, update
 
-from things_sdk.db.models import SyncState
+from things_sdk import SyncState
 
 
 class SchedulerLeadershipService:

@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from sqlalchemy import select, text
 
-from things_sdk.db.models import SyncState
+from things_sdk import SyncState
 
 
 class HealthService:
