@@ -55,6 +55,15 @@ class Tag(Base):
     shortcut: Mapped[str | None] = mapped_column(String(10), nullable=True)
     parent_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
     index: Mapped[int] = mapped_column(Integer, default=0)
+    pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
+    pending_delete: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class TaskTag(Base):
+    __tablename__ = "task_tag"
+
+    task_uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
+    tag_uuid: Mapped[str] = mapped_column(String(22), primary_key=True)
 
 
 class ChecklistItem(Base):

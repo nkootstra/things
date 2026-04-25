@@ -31,6 +31,8 @@ class TaskCommandMapper:
             "deadline": body.deadline,
             "start_date": body.start_date,
             "reminder_time": body.reminder_time,
+            "tags": body.tags,
+            "auto_create_tags": body.auto_create_tags,
         }
 
     def to_update_payload(
