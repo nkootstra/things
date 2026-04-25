@@ -134,6 +134,7 @@ class TaskService:
             "start_date": _ts_to_utc(t.start_date),
             "deadline": _ts_to_utc(t.deadline),
             "completion_date": _ts_to_utc(t.completion_date),
+            "reminder_time": t.reminder_time,
             "area_uuid": t.area_uuid,
             "project_uuid": t.project_uuid,
             "heading_uuid": t.heading_uuid,

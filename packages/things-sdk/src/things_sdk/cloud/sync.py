@@ -236,6 +236,8 @@ def _task_to_wire(task: Task) -> dict:
         payload["cd"] = task.creation_date
     if task.modification_date is not None:
         payload["md"] = task.modification_date
+    if task.reminder_time is not None:
+        payload["al"] = task.reminder_time
 
     return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
 

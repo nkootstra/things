@@ -26,6 +26,7 @@ class Task(Base):
     start_date: Mapped[float | None] = mapped_column(Float, nullable=True)
     deadline: Mapped[float | None] = mapped_column(Float, nullable=True)
     completion_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reminder_time: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     area_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
     project_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)

@@ -16,6 +16,7 @@ from things_sdk.cloud.schema import (
     ChecklistItemPayload,
     TagPayload,
     TaskPayload,
+    TombstonePayload,
 )
 from things_sdk.db.models import Area, ChecklistItem, Tag, Task
 
@@ -78,6 +79,8 @@ class TaskHandler(EntityHandler):
             task.deadline = payload.deadline
         if payload.completion_date is not None:
             task.completion_date = payload.completion_date
+        if payload.reminder_time is not None:
+            task.reminder_time = payload.reminder_time
         if payload.area_ids and payload.area_ids:
             task.area_uuid = payload.area_ids[0]
         if payload.project_ids and payload.project_ids:
@@ -87,7 +90,7 @@ class TaskHandler(EntityHandler):
 
 
 class AreaHandler(EntityHandler):
-    entity_type = "Area2"
+    entity_type = "Area3"
     payload_class = AreaPayload
 
     async def apply(self, session: AsyncSession, uuid: str, action: int, payload: AreaPayload) -> None:
@@ -112,7 +115,7 @@ class AreaHandler(EntityHandler):
 
 
 class TagHandler(EntityHandler):
-    entity_type = "Tag3"
+    entity_type = "Tag4"
     payload_class = TagPayload
 
     async def apply(self, session: AsyncSession, uuid: str, action: int, payload: TagPayload) -> None:
@@ -172,6 +175,25 @@ class ChecklistItemHandler(EntityHandler):
             item.task_uuid = task_ref
 
 
+class TombstoneHandler(EntityHandler):
+    """Handle explicit deletion records (Tombstone2) from other Things clients."""
+
+    entity_type = "Tombstone2"
+    payload_class = TombstonePayload
+
+    async def apply(self, session: AsyncSession, uuid: str, action: int, payload: TombstonePayload) -> None:
+        # A tombstone record means the referenced object was hard-deleted.
+        # We look up the entity by uuid and remove it from each table.
+        for model_cls in (Task, Area, Tag, ChecklistItem):
+            result = await session.execute(
+                select(model_cls).where(model_cls.uuid == uuid)  # type: ignore[attr-defined]
+            )
+            obj = result.scalar_one_or_none()
+            if obj is not None:
+                await session.delete(obj)
+                return
+
+
 # --- Registry ---
 
 _DEFAULT_HANDLERS: list[EntityHandler] = [
@@ -179,6 +201,7 @@ _DEFAULT_HANDLERS: list[EntityHandler] = [
     AreaHandler(),
     TagHandler(),
     ChecklistItemHandler(),
+    TombstoneHandler(),
 ]
 
 
