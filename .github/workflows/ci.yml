@@ -23,6 +23,23 @@ jobs:
       - name: Run tests
         run: uv run pytest -q --tb=short
 
+  typecheck:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run pyright
+        run: uv run pyright
+
   sdk-smoke:
     needs: test
     runs-on: ubuntu-latest

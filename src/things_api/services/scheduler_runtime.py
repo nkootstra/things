@@ -48,12 +48,13 @@ class SchedulerRuntimeController:
             return
 
         pull_fn, push_fn = self._make_sync_fns()
-        self._scheduler = self._scheduler_factory(
+        scheduler = self._scheduler_factory(
             pull_fn=pull_fn,
             push_fn=push_fn,
             interval_seconds=self._settings.sync_interval_seconds,
         )
-        self._scheduler.start()
+        scheduler.start()
+        self._scheduler = scheduler
         self._owner_id = owner_id
         self._lock_task = asyncio.create_task(self._heartbeat(owner_id))
 

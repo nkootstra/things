@@ -146,6 +146,9 @@ uv run uvicorn things_api.main:app --reload
 # Run tests
 uv run pytest -v
 
+# Run type checks (current typed foundation)
+uv run pyright
+
 # Run migrations
 uv run alembic upgrade head
 ```
