@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import things_sdk.cloud.client as cloud_client_mod
 import things_sdk.cloud.sync as cloud_sync_mod
 import things_api.config as config
 from things_sdk.db.models import SyncState
+from things_sdk.protocols import CloudClientProtocol
 from things_api.services.contracts import SyncServiceProtocol
 
 
@@ -21,13 +23,19 @@ class SyncService:
     def __init__(
         self,
         *,
-        client_factory: Callable[[str, str], object] | None = None,
-        pull_fn: Callable[[object, AsyncSession], Awaitable[dict]] | None = None,
-        push_fn: Callable[[object, AsyncSession], Awaitable[dict]] | None = None,
+        client_factory: Callable[[str, str], CloudClientProtocol] | None = None,
+        pull_fn: Callable[[CloudClientProtocol, AsyncSession], Awaitable[dict]] | None = None,
+        push_fn: Callable[[CloudClientProtocol, AsyncSession], Awaitable[dict]] | None = None,
     ) -> None:
-        self._client_factory = client_factory or cloud_client_mod.ThingsCloudClient
-        self._pull_fn = pull_fn or cloud_sync_mod.pull_sync
-        self._push_fn = push_fn or cloud_sync_mod.push_sync
+        self._client_factory: Callable[[str, str], CloudClientProtocol] = (
+            client_factory or cloud_client_mod.ThingsCloudClient
+        )
+        self._pull_fn: Callable[[CloudClientProtocol, AsyncSession], Awaitable[dict]] = (
+            pull_fn or cloud_sync_mod.pull_sync
+        )
+        self._push_fn: Callable[[CloudClientProtocol, AsyncSession], Awaitable[dict]] = (
+            push_fn or cloud_sync_mod.push_sync
+        )
 
     async def get_status(self, session: AsyncSession) -> dict:
         result = await session.execute(select(SyncState).where(SyncState.id == 1))
