@@ -4,12 +4,19 @@
   "pythonVersion": "3.12",
   "include": [
     "scripts",
+    "examples",
     "src/things_api/auth.py",
     "src/things_api/config.py",
     "src/things_api/services/contracts.py",
     "src/things_api/services/task_command_mapper.py",
     "src/things_api/services/scheduler_runtime.py",
+    "src/things_api/services/health_service.py",
+    "src/things_api/services/scheduler_leadership.py",
     "packages/things-sdk/src/things_sdk/protocols.py",
-    "packages/things-sdk/src/things_sdk/errors.py"
+    "packages/things-sdk/src/things_sdk/errors.py",
+    "packages/things-sdk/src/things_sdk/cloud/client.py",
+    "packages/things-sdk/src/things_sdk/cloud/schema.py",
+    "packages/things-sdk/src/things_sdk/db/engine.py",
+    "packages/things-sdk/src/things_sdk/db/models.py"
   ]
 }
