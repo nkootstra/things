@@ -175,11 +175,12 @@ For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS ter
 
 ## CI / Release smoke checks
 
-The automation now verifies that published artifacts are actually usable:
+The automation now verifies both **build artifacts** and **published artifacts**:
 - **SDK smoke test**: build wheel, install it into a clean virtualenv, import `things_sdk`, and verify basic engine creation
 - **Docker smoke test**: build image, boot container, and verify `/health`, `/ready`, and authenticated `GET /api/tasks`
+- **Post-release verification**: after publication, install `things-sdk==<version>` from PyPI and pull `ghcr.io/nkootstra/things:<version>` from GHCR, then run the same basic checks against the published artifacts
 
-This means a green release is not just "built" — it has also been smoke-tested as an installable SDK and runnable container image.
+This means a green release is not just "built" — it is also verified as installable from PyPI and runnable from GHCR.
 
 ## Releasing a New Version
 
@@ -187,7 +188,8 @@ Releases are fully automated via GitHub Actions. Pushing a version tag triggers 
 
 ```
 preflight (tests) ─┬─▶ build (Docker image) ─▶ release (GitHub release)
-                   └─▶ publish-sdk (PyPI)
+                   ├─▶ publish-sdk (PyPI)
+                   └─▶ verify-published-artifacts
 ```
 
 To release:
