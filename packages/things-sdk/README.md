@@ -93,5 +93,6 @@ Releases validate that the SDK is not just built, but actually installable and u
 - install wheel into a clean virtualenv
 - import `things_sdk`
 - create a SQLAlchemy engine/session factory
+- after publish, install `things-sdk==<version>` from PyPI and repeat the basic checks
 
-That means a published `things-sdk` release has already passed a basic install/import smoke test in CI.
+That means a published `things-sdk` release has already passed both a build-time smoke test and a post-publish verification in CI.
