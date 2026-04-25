@@ -979,6 +979,7 @@ dev = [
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "things-mcp" },
 ]
 
 [package.metadata]
@@ -1002,6 +1003,7 @@ dev = [
     { name = "pyright", specifier = ">=1.1.409" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
+    { name = "things-mcp", editable = "packages/things-mcp" },
 ]
 
 [[package]]
