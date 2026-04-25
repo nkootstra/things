@@ -173,19 +173,63 @@ This will:
 
 ## Project Structure
 
+This project is a monorepo with two packages:
+
+| Package | Path | Description |
+|---|---|---|
+| `things-sdk` | `packages/things-sdk/` | Reusable core library — models, cloud client, sync engine, task operations |
+| `things-api` | root | FastAPI HTTP service built on top of the SDK |
+
+You can use them together (run the API) or install only the SDK for scripts, CLIs, or other integrations.
+
+### SDK standalone usage
+
+```python
+from things_sdk import ThingsClient, TaskService, configure_sync, create_engine_and_session, init_db, pull_sync
+
+engine, session_factory = create_engine_and_session("sqlite+aiosqlite:///data/things.db")
+await init_db(engine)
+configure_sync(my_config)
+
+client = ThingsClient(email="...", password="...")
+async with session_factory() as session:
+    await pull_sync(client, session)
+    tasks = await TaskService().list_tasks(session)
+await client.close()
 ```
-src/things_api/
-├── main.py              # FastAPI app, lifespan, scheduler wiring
-├── config.py            # pydantic-settings configuration
-├── auth.py              # API key authentication
-├── api/
-│   └── routes.py        # All API endpoints
+
+See [`packages/things-sdk/README.md`](packages/things-sdk/README.md) for full SDK documentation.
+
+### Directory layout
+
+```
+packages/things-sdk/src/things_sdk/   # SDK (reusable core)
+├── __init__.py              # Public API exports
+├── protocols.py             # CloudClientProtocol, SyncConfig
+├── tasks.py                 # TaskService
 ├── cloud/
-│   ├── client.py        # Things Cloud HTTP client
-│   ├── schema.py        # Wire format Pydantic models
-│   ├── sync.py          # Pull and push sync engines
-│   └── scheduler.py     # Background sync loop
+│   ├── client.py            # ThingsCloudClient
+│   ├── handlers.py          # Entity handler strategy pattern
+│   ├── schema.py            # Wire format Pydantic models
+│   └── sync.py              # Sync engine + circuit breaker
 └── db/
-    ├── engine.py        # SQLAlchemy async engine + session
-    └── models.py        # ORM models (Task, Area, Tag, ChecklistItem, SyncState)
+    ├── engine.py            # Engine factory
+    └── models.py            # Domain models
+
+src/things_api/                       # API (HTTP adapter)
+├── main.py                  # FastAPI app, lifespan, scheduler
+├── config.py                # pydantic-settings configuration
+├── auth.py                  # API key authentication
+├── api/
+│   └── routes.py            # HTTP endpoints
+├── cloud/
+│   └── scheduler.py         # Background sync loop
+└── services/
+    ├── contracts.py          # API-layer service protocols
+    ├── health_service.py     # Readiness checks
+    ├── sync_service.py       # Manual sync orchestration
+    ├── task_service.py       # Re-exports SDK TaskService
+    ├── task_command_mapper.py# Request DTO mapping
+    ├── scheduler_leadership.py # Distributed lock
+    └── scheduler_runtime.py  # Scheduler lifecycle
 ```
