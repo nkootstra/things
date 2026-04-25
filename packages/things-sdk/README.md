@@ -4,6 +4,8 @@ Reusable Python SDK for Things Cloud sync.
 
 > Looking for the HTTP service instead of the Python library? See the root [`README.md`](../../README.md) for `things-api`.
 
+> **Changelog** — For a detailed history of changes, see [`CHANGELOG.md`](../../CHANGELOG.md).
+
 ## When should I use this?
 
 Use `things-sdk` when you want to build Python-native tooling on top of Things Cloud, such as:

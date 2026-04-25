@@ -2,8 +2,11 @@
 
 All notable changes to this project are documented here.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).  
 Both packages (`things-api` and `things-sdk`) are versioned together.
+
+> **Which package should I use?**  
+> See the [repository README](README.md#which-package-should-i-use) for guidance on when to use the HTTP service vs the Python SDK.
 
 ---
 
