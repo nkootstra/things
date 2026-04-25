@@ -21,6 +21,7 @@ class TaskPayload(BaseModel):
     start_date: float | None = Field(None, alias="sr")
     deadline: float | None = Field(None, alias="dd")
     completion_date: float | None = Field(None, alias="sp")
+    reminder_time: int | None = Field(None, alias="al")
     area_ids: list[str] | None = Field(None, alias="ar")
     project_ids: list[str] | None = Field(None, alias="pr")
     tag_ids: list[str] | None = Field(None, alias="tg")
@@ -50,6 +51,12 @@ class ChecklistItemPayload(BaseModel):
     index: int | None = Field(None, alias="ix")
     stop_date: float | None = Field(None, alias="sp")
     task_ids: list[str] | None = Field(None, alias="ts")
+    model_config = {"populate_by_name": True}
+
+
+class TombstonePayload(BaseModel):
+    """Represents an explicit deletion record."""
+    deletion_date: float | None = Field(None, alias="dd")
     model_config = {"populate_by_name": True}
 
 

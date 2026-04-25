@@ -8,4 +8,5 @@ from things_sdk.cloud.schema import (  # noqa: F401
     ChecklistItemPayload,
     TagPayload,
     TaskPayload,
+    TombstonePayload,
 )

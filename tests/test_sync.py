@@ -135,7 +135,7 @@ async def test_pull_sync_creates_area(db_session):
     from things_api.db.models import Area
 
     cloud_items = [
-        {"uuid_area_01abcdefghijk": {"t": 0, "e": "Area2", "p": {"tt": "Work", "vs": True}}}
+        {"uuid_area_01abcdefghijk": {"t": 0, "e": "Area3", "p": {"tt": "Work", "vs": True}}}
     ]
     client = FakeCloudClient(items=cloud_items, new_index=1)
 
@@ -478,3 +478,55 @@ async def test_half_open_probe_success_closes_circuit(db_session):
     assert state.sync_status == "synced"
     assert (state.consecutive_sync_errors or 0) == 0
     assert state.circuit_open_until is None
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_applies_reminder_time(db_session):
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [
+        {"uuid_remind_task_abcdefg": {"t": 0, "e": "Task6", "p": {"tt": "Wake up", "al": 28800}}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    counts = await pull_sync(client, db_session)
+    assert counts["created"] == 1
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "uuid_remind_task_abcdefg"))
+    task = result.scalar_one()
+    assert task.reminder_time == 28800
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_handles_tombstone2(db_session):
+    from things_api.cloud.sync import pull_sync
+
+    # First create a task
+    task = Task(uuid="tombstone_task_abcdefgh", title="To tombstone")
+    db_session.add(task)
+    await db_session.commit()
+
+    # Now receive a Tombstone2 for it
+    cloud_items = [
+        {"tombstone_task_abcdefgh": {"t": 0, "e": "Tombstone2", "p": {}}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=2)
+    counts = await pull_sync(client, db_session)
+
+    result = await db_session.execute(select(Task).where(Task.uuid == "tombstone_task_abcdefgh"))
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_creates_area_with_area3(db_session):
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import Area
+
+    cloud_items = [
+        {"uuid_area3_abcdefghijk": {"t": 0, "e": "Area3", "p": {"tt": "Work Area3"}}}
+    ]
+    client = FakeCloudClient(items=cloud_items, new_index=1)
+    counts = await pull_sync(client, db_session)
+    assert counts["created"] == 1
+
+    result = await db_session.execute(select(Area).where(Area.uuid == "uuid_area3_abcdefghijk"))
+    assert result.scalar_one().title == "Work Area3"
