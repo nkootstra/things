@@ -11,6 +11,7 @@ import asyncio
 import os
 
 from things_sdk import (
+    DefaultSyncConfig,
     TaskService,
     ThingsClient,
     configure_sync,
@@ -18,13 +19,6 @@ from things_sdk import (
     init_db,
     push_sync,
 )
-
-
-class DefaultSyncConfig:
-    sync_retry_attempts = 3
-    sync_retry_base_seconds = 0.25
-    sync_circuit_breaker_failures = 3
-    sync_circuit_breaker_cooldown_seconds = 60.0
 
 
 async def main() -> None:
@@ -38,7 +32,6 @@ async def main() -> None:
     svc = TaskService()
     client = ThingsClient(email=email, password=password)
     try:
-        # Create locally
         async with session_factory() as session:
             task = await svc.create_task(
                 session,
@@ -55,7 +48,6 @@ async def main() -> None:
             )
             print(f"Created locally: {task['uuid']} — {task['title']}")
 
-        # Push to Things Cloud
         async with session_factory() as session:
             result = await push_sync(client, session)
             print(f"Pushed to cloud: {result}")

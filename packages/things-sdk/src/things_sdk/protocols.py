@@ -24,3 +24,12 @@ class SyncConfig(Protocol):
     sync_retry_base_seconds: float
     sync_circuit_breaker_failures: int
     sync_circuit_breaker_cooldown_seconds: float
+
+
+class DefaultSyncConfig:
+    """Ready-to-use default sync configuration with sensible production values."""
+
+    sync_retry_attempts: int = 3
+    sync_retry_base_seconds: float = 0.25
+    sync_circuit_breaker_failures: int = 3
+    sync_circuit_breaker_cooldown_seconds: float = 60.0

@@ -33,20 +33,13 @@ import asyncio
 from things_sdk import (
     ThingsClient,
     TaskService,
+    DefaultSyncConfig,
     configure_sync,
     create_engine_and_session,
     init_db,
     pull_sync,
     push_sync,
 )
-
-
-class MySyncConfig:
-    sync_retry_attempts = 3
-    sync_retry_base_seconds = 0.25
-    sync_circuit_breaker_failures = 3
-    sync_circuit_breaker_cooldown_seconds = 60.0
-
 
 async def main():
     # 1. Database setup
@@ -55,8 +48,8 @@ async def main():
     )
     await init_db(engine)
 
-    # 2. Configure sync engine
-    configure_sync(MySyncConfig())
+    # 2. Configure sync engine (use built-in defaults or pass your own config)
+    configure_sync(DefaultSyncConfig())
 
     # 3. Sync from Things Cloud
     client = ThingsClient(email="you@example.com", password="your-password")
