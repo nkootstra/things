@@ -4,15 +4,33 @@ version = "0.2.0"
 description = "Reusable Python SDK for Things Cloud sync — domain models, cloud client, sync engine, and task operations"
 readme = "README.md"
 authors = [
-    { name = "Niels Kootstra", email = "545768+nkootstra@users.noreply.github.com" }
+    { name = "Niels Kootstra", email = "niels.kootstra@pm.me" }
 ]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
+keywords = ["things", "things3", "sdk", "sync", "productivity"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Office/Business :: Scheduling",
+]
 dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.21",
     "httpx>=0.28",
     "pydantic>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nkootstra/things/tree/main/packages/things-sdk"
+Repository = "https://github.com/nkootstra/things"
+Issues = "https://github.com/nkootstra/things/issues"
+Changelog = "https://github.com/nkootstra/things/releases"
 
 [build-system]
 requires = ["hatchling"]

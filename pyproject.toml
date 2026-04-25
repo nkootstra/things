@@ -4,15 +4,35 @@ version = "0.2.0"
 description = "FastAPI service that syncs with Things Cloud and exposes a RESTful API over Things3 data"
 readme = "README.md"
 authors = [
-    { name = "Niels Kootstra", email = "545768+nkootstra@users.noreply.github.com" }
+    { name = "Niels Kootstra", email = "niels.kootstra@pm.me" }
 ]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
+keywords = ["things", "things3", "api", "fastapi", "sync"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "things-sdk",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "pydantic-settings>=2.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nkootstra/things"
+Repository = "https://github.com/nkootstra/things"
+Issues = "https://github.com/nkootstra/things/issues"
+Releases = "https://github.com/nkootstra/things/releases"
+Docker = "https://github.com/nkootstra?tab=packages&repo_name=things"
 
 [project.optional-dependencies]
 dev = [
