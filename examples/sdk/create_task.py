@@ -45,8 +45,10 @@ async def main() -> None:
                 heading_uuid=None,
                 deadline=None,
                 start_date=None,
+                # tags=["work"],  # optionally assign tags by name or UUID
             )
             print(f"Created locally: {task['uuid']} — {task['title']}")
+            print(f"  Tags: {task['tags']}")
 
         async with session_factory() as session:
             result = await push_sync(client, session)

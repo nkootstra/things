@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 from xml.etree import ElementTree
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_sdk.cloud.handlers import EntityHandlerRegistry, default_registry
@@ -20,7 +20,7 @@ from things_sdk.cloud.schema import (
     ACTION_MODIFIED,
 )
 from things_sdk.protocols import CloudClientProtocol, SyncConfig
-from things_sdk.db.models import SyncState, Task
+from things_sdk.db.models import SyncState, Tag, Task, TaskTag
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ async def pull_sync(
     return counts
 
 
-def _task_to_wire(task: Task) -> dict:
+def _task_to_wire(task: Task, tag_uuids: list[str] | None = None) -> dict:
     """Convert a Task to Things Cloud wire format."""
     payload: dict = {}
     if task.title:
@@ -242,11 +242,38 @@ def _task_to_wire(task: Task) -> dict:
         payload["al"] = task.reminder_time
     payload["lp"] = 1 if task.leaves_tombstone else 0
 
+    # Always emit tag list when provided (including empty = "remove all tags")
+    if tag_uuids is not None:
+        payload["tg"] = tag_uuids
+
     return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
 
 
+def _tag_to_wire(tag: Tag) -> dict:
+    """Convert a Tag to Things Cloud wire format."""
+    payload: dict = {}
+    if tag.title:
+        payload["tt"] = tag.title
+    if tag.shortcut:
+        payload["sh"] = tag.shortcut
+    if tag.parent_uuid:
+        payload["pn"] = [tag.parent_uuid]
+    if tag.index is not None:
+        payload["ix"] = tag.index
+    return {tag.uuid: {"t": ACTION_MODIFIED, "e": "Tag4", "p": payload}}
+
+
+def _tag_delete_wire(tag_uuid: str) -> dict:
+    """Create a deletion wire item for a Tag."""
+    return {tag_uuid: {"t": ACTION_DELETED, "e": "Tag4", "p": {}}}
+
+
 async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[str, int]:
-    """Push locally modified tasks to Things Cloud."""
+    """Push locally modified tags and tasks to Things Cloud.
+
+    Ordering: tag creates/updates first, then tasks, then tag deletes.
+    This avoids cloud-side orphan references.
+    """
     state = await _get_or_create_sync_state(session)
     is_half_open_probe = _prepare_circuit_for_attempt(state)
 
@@ -254,17 +281,46 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
         history_key = await client.authenticate()
         state.history_key = history_key
 
+    # Collect pending tags (creates/updates and deletes separately)
+    result = await session.execute(
+        select(Tag).where((Tag.pending_push == True) & (Tag.pending_delete == False))
+    )
+    pending_tags = result.scalars().all()
+
+    result = await session.execute(
+        select(Tag).where(Tag.pending_delete == True)
+    )
+    pending_tag_deletes = result.scalars().all()
+
+    # Collect pending tasks
     result = await session.execute(select(Task).where(Task.pending_push == True))
     pending_tasks = result.scalars().all()
 
-    counts: dict[str, int] = {"pushed": 0}
+    counts: dict[str, int] = {"pushed": 0, "tags_pushed": 0, "tags_deleted": 0}
 
-    if not pending_tasks:
+    if not pending_tasks and not pending_tags and not pending_tag_deletes:
         _record_sync_success(state, phase="push")
         await session.commit()
         return counts
 
-    items = [_task_to_wire(t) for t in pending_tasks]
+    # Batch-load tag associations for all pending tasks
+    task_tag_map: dict[str, list[str]] = {}
+    if pending_tasks:
+        task_uuids = [t.uuid for t in pending_tasks]
+        tag_result = await session.execute(
+            select(TaskTag).where(TaskTag.task_uuid.in_(task_uuids))
+        )
+        for tt in tag_result.scalars():
+            task_tag_map.setdefault(tt.task_uuid, []).append(tt.tag_uuid)
+
+    # Build commit batch: tag creates/updates → tasks → tag deletes
+    items: list[dict] = []
+    items.extend(_tag_to_wire(t) for t in pending_tags)
+    items.extend(
+        _task_to_wire(t, tag_uuids=task_tag_map.get(t.uuid, []))
+        for t in pending_tasks
+    )
+    items.extend(_tag_delete_wire(t.uuid) for t in pending_tag_deletes)
 
     try:
         new_index = await _with_retry(
@@ -278,6 +334,14 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
         await session.commit()
         raise
 
+    for tag in pending_tags:
+        tag.pending_push = False
+
+    for tag in pending_tag_deletes:
+        # Clean up associations and delete the tag
+        await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == tag.uuid))
+        await session.delete(tag)
+
     for task in pending_tasks:
         task.pending_push = False
 
@@ -289,4 +353,6 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
 
     await session.commit()
     counts["pushed"] = len(pending_tasks)
+    counts["tags_pushed"] = len(pending_tags)
+    counts["tags_deleted"] = len(pending_tag_deletes)
     return counts

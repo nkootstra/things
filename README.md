@@ -7,18 +7,21 @@
 
 RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the reverse-engineered sync protocol and exposes your tasks, projects, areas, and tags over HTTP/HTTPS.
 
-This repository ships **two related products**:
+This repository ships **three related products**:
 - **`things-api`** — a ready-to-run HTTP/HTTPS service
 - **`things-sdk`** — a standalone Python SDK for scripts, CLIs, workers, and integrations
+- **`things-mcp`** — an MCP server that gives AI agents (Claude, Codex, etc.) read/write access to your tasks
 
 > Looking for the Python library instead of the HTTP service? See [`packages/things-sdk/README.md`](packages/things-sdk/README.md).
+> Want to connect your AI agent? See [`packages/things-mcp/README.md`](packages/things-mcp/README.md).
 
 ## Which package should I use?
 
 | Use case | What to use |
 |---|---|
 | You want a hosted/self-hosted HTTP/HTTPS API | `things-api` |
-| You want to build a CLI, script, worker, MCP server, or integration in Python | `things-sdk` |
+| You want to build a CLI, script, worker, or integration in Python | `things-sdk` |
+| You want AI agents to read/write your tasks | `things-mcp` (requires a running `things-api`) |
 
 If you just want to run a server and call it over HTTP/HTTPS, continue with the API docs below.
 If you want to embed the core functionality directly in Python, jump to the SDK README.
@@ -72,11 +75,36 @@ PATCH  /api/tasks/{uuid}   # Update a task
 DELETE /api/tasks/{uuid}   # Soft-delete (trash) a task
 ```
 
-### Read-only
+### Smart Lists
+
+```
+GET    /api/tasks/inbox     # Unscheduled tasks
+GET    /api/tasks/today     # Tasks for today or earlier
+GET    /api/tasks/upcoming  # Tasks scheduled for the future
+GET    /api/tasks/anytime   # Tasks available anytime
+GET    /api/tasks/someday   # Low-priority ideas
+GET    /api/tasks/logbook   # Completed tasks (default: last 30 days, ?since=<epoch>)
+GET    /api/tasks/trash     # Trashed tasks
+```
+
+All smart lists support `?limit=<int>&offset=<int>` for pagination.
+
+### Tags
+
+```
+GET    /api/tags            # List all tags
+POST   /api/tags            # Create a tag
+PATCH  /api/tags/{uuid}     # Update a tag
+DELETE /api/tags/{uuid}     # Delete a tag
+GET    /api/tasks/by-tag/{tag}  # List tasks by tag UUID or name (?include_descendants=true)
+```
+
+Tasks now include a `tags` field in all responses. Pass `tags: ["uuid-or-name", ...]` when creating or updating tasks.
+
+### Areas
 
 ```
 GET    /api/areas           # List all areas
-GET    /api/tags            # List all tags
 ```
 
 ### Sync
@@ -132,7 +160,7 @@ Things Cloud uses an event-sourced model with a monotonically increasing index. 
 
 The repository uses a uv workspace:
 - root package: `things-api`
-- workspace package: `things-sdk`
+- workspace packages: `things-sdk`, `things-mcp`
 
 ```sh
 # Install both packages in editable mode
@@ -249,6 +277,7 @@ This project is a monorepo with two packages:
 |---|---|---|
 | `things-sdk` | `packages/things-sdk/` | Reusable core library — models, cloud client, sync engine, task operations |
 | `things-api` | root | FastAPI HTTP service built on top of the SDK |
+| `things-mcp` | `packages/things-mcp/` | MCP server for AI agents (Claude, Codex, etc.) |
 
 You can use them together (run the API) or install only the SDK for scripts, CLIs, or other integrations.
 
@@ -276,7 +305,8 @@ See [`packages/things-sdk/README.md`](packages/things-sdk/README.md) for full SD
 packages/things-sdk/src/things_sdk/   # SDK (reusable core)
 ├── __init__.py              # Public API exports
 ├── protocols.py             # CloudClientProtocol, SyncConfig
-├── tasks.py                 # TaskService
+├── tasks.py                 # TaskService (CRUD + smart lists)
+├── tags.py                  # TagService (CRUD + hierarchy resolution)
 ├── cloud/
 │   ├── client.py            # ThingsCloudClient
 │   ├── handlers.py          # Entity handler strategy pattern
@@ -284,14 +314,14 @@ packages/things-sdk/src/things_sdk/   # SDK (reusable core)
 │   └── sync.py              # Sync engine + circuit breaker
 └── db/
     ├── engine.py            # Engine factory
-    └── models.py            # Domain models
+    └── models.py            # Domain models (Task, Tag, TaskTag, Area, etc.)
 
 src/things_api/                       # API (HTTP adapter)
 ├── main.py                  # FastAPI app, lifespan, scheduler
 ├── config.py                # pydantic-settings configuration
 ├── auth.py                  # API key authentication
 ├── api/
-│   └── routes.py            # HTTP endpoints
+│   └── routes.py            # HTTP endpoints (tasks, smart lists, tags)
 ├── cloud/
 │   └── scheduler.py         # Background sync loop
 └── services/
@@ -299,7 +329,14 @@ src/things_api/                       # API (HTTP adapter)
     ├── health_service.py     # Readiness checks
     ├── sync_service.py       # Manual sync orchestration
     ├── task_service.py       # Re-exports SDK TaskService
+    ├── tag_service.py        # Re-exports SDK TagService
     ├── task_command_mapper.py# Request DTO mapping
     ├── scheduler_leadership.py # Distributed lock
     └── scheduler_runtime.py  # Scheduler lifecycle
+
+packages/things-mcp/src/things_mcp/   # MCP server
+├── __init__.py              # Entry point
+├── server.py                # FastMCP tools (22 tools)
+├── client.py                # HTTP client for things-api
+└── __main__.py              # python -m things_mcp
 ```

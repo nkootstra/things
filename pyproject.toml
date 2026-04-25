@@ -62,4 +62,4 @@ asyncio_mode = "auto"
 things-sdk = { workspace = true }
 
 [tool.uv.workspace]
-members = ["packages/things-sdk"]
+members = ["packages/things-sdk", "packages/things-mcp"]

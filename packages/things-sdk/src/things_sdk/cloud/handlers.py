@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_sdk.cloud.schema import (
@@ -18,7 +18,7 @@ from things_sdk.cloud.schema import (
     TaskPayload,
     TombstonePayload,
 )
-from things_sdk.db.models import Area, ChecklistItem, Tag, Task
+from things_sdk.db.models import Area, ChecklistItem, Tag, Task, TaskTag
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,14 @@ class TaskHandler(EntityHandler):
         if payload.contact_ids and payload.contact_ids:
             task.contact_uuid = payload.contact_ids[0]
 
+        # Replace-set tag associations (cloud is source of truth)
+        if payload.tag_ids is not None:
+            await session.execute(
+                delete(TaskTag).where(TaskTag.task_uuid == uuid)
+            )
+            for tag_uuid in payload.tag_ids:
+                session.add(TaskTag(task_uuid=uuid, tag_uuid=tag_uuid))
+
 
 class AreaHandler(EntityHandler):
     entity_type = "Area3"
@@ -128,6 +136,7 @@ class TagHandler(EntityHandler):
 
         if action == ACTION_DELETED:
             if tag:
+                await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == uuid))
                 await session.delete(tag)
             return
 
@@ -188,6 +197,10 @@ class TombstoneHandler(EntityHandler):
     async def apply(self, session: AsyncSession, uuid: str, action: int, payload: TombstonePayload) -> None:
         # A tombstone record means the referenced object was hard-deleted.
         # We look up the entity by uuid and remove it from each table.
+        # Clean up TaskTag associations if it's a task or tag.
+        await session.execute(delete(TaskTag).where(TaskTag.task_uuid == uuid))
+        await session.execute(delete(TaskTag).where(TaskTag.tag_uuid == uuid))
+
         for model_cls in (Task, Area, Tag, ChecklistItem):
             result = await session.execute(
                 select(model_cls).where(model_cls.uuid == uuid)  # type: ignore[attr-defined]
