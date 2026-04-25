@@ -1,5 +1,8 @@
 # Things SDK
 
+[![things-sdk on PyPI](https://img.shields.io/pypi/v/things-sdk?label=things-sdk)](https://pypi.org/project/things-sdk/)
+[![CI](https://github.com/nkootstra/things/actions/workflows/ci.yml/badge.svg)](https://github.com/nkootstra/things/actions/workflows/ci.yml)
+
 Reusable Python SDK for Things Cloud sync.
 
 > Looking for the HTTP service instead of the Python library? See the root [`README.md`](../../README.md) for `things-api`.

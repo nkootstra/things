@@ -1,5 +1,10 @@
 # Things API
 
+[![CI](https://github.com/nkootstra/things/actions/workflows/ci.yml/badge.svg)](https://github.com/nkootstra/things/actions/workflows/ci.yml)
+[![Release](https://github.com/nkootstra/things/actions/workflows/release.yml/badge.svg)](https://github.com/nkootstra/things/actions/workflows/release.yml)
+[![Docker](https://img.shields.io/badge/ghcr.io-nkootstra%2Fthings-blue?logo=docker)](https://github.com/nkootstra/things/pkgs/container/things)
+[![things-sdk on PyPI](https://img.shields.io/pypi/v/things-sdk?label=things-sdk)](https://pypi.org/project/things-sdk/)
+
 RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the reverse-engineered sync protocol and exposes your tasks, projects, areas, and tags over HTTP/HTTPS.
 
 This repository ships **two related products**:
