@@ -193,15 +193,30 @@ preflight (tests) ─┬─▶ build (Docker image) ─▶ release (GitHub relea
 To release:
 
 ```sh
-# 1. Update versions in both pyproject.toml files
-#    - Root pyproject.toml (things-api version)
-#    - packages/things-sdk/pyproject.toml (things-sdk version)
-# 2. Commit the version bump
-git add pyproject.toml packages/things-sdk/pyproject.toml
-git commit -m "release: v0.2.0"
+./scripts/release.sh 0.2.1
+```
 
-# 3. Tag and push
-git tag v0.2.0
+The script will:
+1. update versions in both `pyproject.toml` files
+2. run `uv sync --dev`
+3. run the full test suite
+4. commit `release: vX.Y.Z`
+5. create tag `vX.Y.Z`
+6. push the commit and tag
+
+Useful flags:
+
+```sh
+./scripts/release.sh 0.2.1 --no-push
+./scripts/release.sh 0.2.1 --skip-tests
+```
+
+Manual fallback:
+
+```sh
+git add pyproject.toml packages/things-sdk/pyproject.toml
+git commit -m "release: v0.2.1"
+git tag v0.2.1
 git push && git push --tags
 ```
 
