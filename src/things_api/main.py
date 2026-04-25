@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 import things_api.config as config
 from things_api.db import engine as engine_mod
+from things_api.observability import configure_logging
 from things_api.services.health_service import HealthService
 from things_api.services.scheduler_leadership import SchedulerLeadershipService
 from things_api.services.scheduler_runtime import SchedulerRuntimeController
@@ -82,6 +83,7 @@ def _get_scheduler_runtime() -> SchedulerRuntimeController:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global scheduler_runtime
+    configure_logging(config.settings.log_format)
     config.settings.validate_api_key()
     await engine_mod.init_db()
 
@@ -110,6 +112,16 @@ app.include_router(api_router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics_endpoint():
+    from fastapi.responses import PlainTextResponse
+    if not config.settings.enable_metrics:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Metrics not enabled")
+    from things_api.metrics import metrics
+    return PlainTextResponse(content=metrics.to_prometheus_text(), media_type="text/plain; version=0.0.4")
 
 
 def _get_health_service() -> HealthService:
