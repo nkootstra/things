@@ -85,3 +85,24 @@ jobs:
         with:
           body: ${{ steps.notes.outputs.body }}
           generate_release_notes: false
+
+  publish-sdk:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Build SDK package
+        run: uv build --package things-sdk
+
+      - name: Publish SDK to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

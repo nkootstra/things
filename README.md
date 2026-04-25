@@ -150,15 +150,18 @@ For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS ter
 Releases are fully automated via GitHub Actions. Pushing a version tag triggers the pipeline:
 
 ```
-preflight (tests) -> build (Docker image) -> release (GitHub release)
+preflight (tests) ─┬─▶ build (Docker image) ─▶ release (GitHub release)
+                   └─▶ publish-sdk (PyPI)
 ```
 
 To release:
 
 ```sh
-# 1. Update the version in pyproject.toml
+# 1. Update versions in both pyproject.toml files
+#    - Root pyproject.toml (things-api version)
+#    - packages/things-sdk/pyproject.toml (things-sdk version)
 # 2. Commit the version bump
-git add pyproject.toml
+git add pyproject.toml packages/things-sdk/pyproject.toml
 git commit -m "release: v0.2.0"
 
 # 3. Tag and push
@@ -169,7 +172,10 @@ git push && git push --tags
 This will:
 - Run all tests (preflight gate)
 - Build and push the Docker image to `ghcr.io/nkootstra/things-api` with tags `0.2.0`, `0.2`, and `latest`
+- Publish `things-sdk` to PyPI
 - Create a GitHub release with auto-generated release notes
+
+> **Note:** PyPI publishing uses [trusted publishers](https://docs.pypi.org/trusted-publishers/). You must configure the GitHub Actions publisher for `things-sdk` on PyPI before the first publish.
 
 ## Project Structure
 
