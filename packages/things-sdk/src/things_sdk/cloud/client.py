@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from urllib.parse import quote
 
 import httpx
@@ -11,6 +12,8 @@ DEFAULT_HEADERS = {
     "App-Id": "com.culturedcode.ThingsMac",
     "Schema": "301",
 }
+
+logger = logging.getLogger(__name__)
 
 
 class ThingsCloudAuthError(Exception):
@@ -80,6 +83,17 @@ class ThingsCloudClient:
             data = resp.json()
             items = data.get("items", [])
             current_index = data.get("current-item-index", current_start)
+            server_schema = data.get("schema", None)
+
+            if server_schema is not None:
+                our_schema = int(DEFAULT_HEADERS["Schema"])
+                if server_schema > our_schema:
+                    logger.warning(
+                        "Things Cloud reports schema version %s, but client uses %s. "
+                        "Some new fields may not be synced correctly.",
+                        server_schema,
+                        our_schema,
+                    )
 
             all_items.extend(items)
 
