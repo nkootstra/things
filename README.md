@@ -1,6 +1,20 @@
 # Things API
 
-RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the reverse-engineered sync protocol and exposes your tasks, projects, areas, and tags over HTTP.
+RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the reverse-engineered sync protocol and exposes your tasks, projects, areas, and tags over HTTP/HTTPS.
+
+> Looking for the Python library instead of the HTTP service? See [`packages/things-sdk/README.md`](packages/things-sdk/README.md).
+
+## Which package should I use?
+
+This repository ships **two related products**:
+
+| Use case | What to use |
+|---|---|
+| You want a hosted/self-hosted HTTP/HTTPS API | `things-api` |
+| You want to build a CLI, script, worker, MCP server, or integration in Python | `things-sdk` |
+
+If you just want to run a server and call it over HTTP/HTTPS, continue with the API docs below.
+If you want to embed the core functionality directly in Python, jump to the SDK README.
 
 ## Quick Start
 
@@ -106,6 +120,18 @@ Things Cloud uses an event-sourced model with a monotonically increasing index. 
 
 ## Local Development
 
+The repository uses a uv workspace:
+- root package: `things-api`
+- workspace package: `things-sdk`
+
+```sh
+# Install both packages in editable mode
+uv sync
+```
+
+You can then run the API or import `things_sdk` directly in local scripts/tests.
+
+
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```sh
@@ -144,6 +170,14 @@ For production, put a reverse proxy (Caddy, nginx, Traefik) in front for TLS ter
                    │  (TLS)   │      │  :8000       │
                    └──────────┘      └──────────────┘
 ```
+
+## CI / Release smoke checks
+
+The automation now verifies that published artifacts are actually usable:
+- **SDK smoke test**: build wheel, install it into a clean virtualenv, import `things_sdk`, and verify basic engine creation
+- **Docker smoke test**: build image, boot container, and verify `/health`, `/ready`, and authenticated `GET /api/tasks`
+
+This means a green release is not just "built" — it has also been smoke-tested as an installable SDK and runnable container image.
 
 ## Releasing a New Version
 
