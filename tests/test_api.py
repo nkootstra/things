@@ -333,8 +333,8 @@ async def test_trigger_sync_returns_503_when_circuit_open(authed_client, db, mon
 
 @pytest.mark.asyncio
 async def test_trigger_sync_releases_manual_lock_after_success(authed_client, db, monkeypatch):
-    import things_api.cloud.client as client_mod
-    import things_api.cloud.sync as sync_mod
+    import things_sdk.cloud.client as client_mod
+    import things_sdk.cloud.sync as sync_mod
     from things_api.config import settings
 
     monkeypatch.setattr(settings, "things_email", "user@example.com")
@@ -368,8 +368,8 @@ async def test_trigger_sync_releases_manual_lock_after_success(authed_client, db
 
 @pytest.mark.asyncio
 async def test_trigger_sync_closes_cloud_client(authed_client, monkeypatch):
-    import things_api.cloud.client as client_mod
-    import things_api.cloud.sync as sync_mod
+    import things_sdk.cloud.client as client_mod
+    import things_sdk.cloud.sync as sync_mod
     from things_api.config import settings
 
     monkeypatch.setattr(settings, "things_email", "user@example.com")

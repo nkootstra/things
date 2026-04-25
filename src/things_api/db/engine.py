@@ -1,32 +1,15 @@
-from pathlib import Path
+"""API database engine — delegates to SDK and adds FastAPI session dependency."""
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from things_api.config import settings
+from things_sdk.db.engine import create_engine_and_session, init_db as _sdk_init_db
 
-
-def _ensure_sqlite_directory(database_url: str) -> None:
-    prefix = "sqlite+aiosqlite:///"
-    if not database_url.startswith(prefix):
-        return
-    db_path = database_url[len(prefix):]
-    if db_path == ":memory:" or db_path.startswith("file:"):
-        return
-    parent = Path(db_path).expanduser().resolve().parent
-    parent.mkdir(parents=True, exist_ok=True)
-
-
-_ensure_sqlite_directory(settings.database_url)
-
-engine = create_async_engine(settings.database_url, echo=False)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+engine, async_session = create_engine_and_session(settings.database_url)
 
 
 async def init_db() -> None:
-    from things_api.db.models import Base
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await _sdk_init_db(engine)
 
 
 async def get_session() -> AsyncSession:  # type: ignore[misc]

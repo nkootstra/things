@@ -7,7 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from things_api.config import settings
-from things_api.db.models import Base
+from things_sdk.db.models import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
