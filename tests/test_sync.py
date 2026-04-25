@@ -7,6 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from things_api.db.models import Base, SyncState, Task
+from things_sdk.cloud.sync import configure as configure_sync
+
+
+def _reconfigure_sync(settings):
+    """Re-push settings into SDK sync module after monkeypatching."""
+    configure_sync(settings)
 
 
 @pytest.fixture
@@ -238,6 +244,7 @@ async def test_push_sync_failure_during_half_open_reopens_circuit(db_session, mo
     monkeypatch.setattr(settings, "sync_retry_attempts", 1)
     monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 999)
     monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+    _reconfigure_sync(settings)
 
     db_session.add(
         SyncState(
@@ -249,6 +256,7 @@ async def test_push_sync_failure_during_half_open_reopens_circuit(db_session, mo
             consecutive_sync_errors=10,
         )
     )
+
     db_session.add(Task(uuid="push_half_open_fail_abcdef", title="Retry me", pending_push=True))
     await db_session.commit()
 
@@ -367,6 +375,7 @@ async def test_pull_sync_opens_circuit_after_threshold(db_session, monkeypatch):
     monkeypatch.setattr(settings, "sync_retry_attempts", 1)
     monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 1)
     monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+    _reconfigure_sync(settings)
 
     client = FlakyGetItemsClient(items=[], new_index=0, fail_times=1)
 
@@ -411,6 +420,7 @@ async def test_half_open_probe_failure_reopens_immediately(db_session, monkeypat
     monkeypatch.setattr(settings, "sync_retry_attempts", 1)
     monkeypatch.setattr(settings, "sync_circuit_breaker_failures", 999)
     monkeypatch.setattr(settings, "sync_circuit_breaker_cooldown_seconds", 30.0)
+    _reconfigure_sync(settings)
 
     db_session.add(
         SyncState(

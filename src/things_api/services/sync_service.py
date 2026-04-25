@@ -10,10 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import things_api.cloud.client as cloud_client_mod
-import things_api.cloud.sync as cloud_sync_mod
+import things_sdk.cloud.client as cloud_client_mod
+import things_sdk.cloud.sync as cloud_sync_mod
 import things_api.config as config
-from things_api.db.models import SyncState
+from things_sdk.db.models import SyncState
 from things_api.services.contracts import SyncServiceProtocol
 
 
