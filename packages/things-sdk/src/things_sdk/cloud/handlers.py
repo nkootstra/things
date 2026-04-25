@@ -81,12 +81,16 @@ class TaskHandler(EntityHandler):
             task.completion_date = payload.completion_date
         if payload.reminder_time is not None:
             task.reminder_time = payload.reminder_time
+        if payload.leaves_tombstone is not None:
+            task.leaves_tombstone = bool(payload.leaves_tombstone)
         if payload.area_ids and payload.area_ids:
             task.area_uuid = payload.area_ids[0]
         if payload.project_ids and payload.project_ids:
             task.project_uuid = payload.project_ids[0]
         if payload.heading_ids and payload.heading_ids:
             task.heading_uuid = payload.heading_ids[0]
+        if payload.contact_ids and payload.contact_ids:
+            task.contact_uuid = payload.contact_ids[0]
 
 
 class AreaHandler(EntityHandler):
