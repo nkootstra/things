@@ -91,7 +91,7 @@ class SyncService:
             .where(or_(SyncState.manual_sync_lock_until.is_(None), SyncState.manual_sync_lock_until <= now))
             .values(manual_sync_lock_until=lock_until)
         )
-        lock_res = await session.execute(lock_stmt)
+        lock_res: CursorResult = await session.execute(lock_stmt)  # type: ignore[assignment]
         await session.commit()
         if not lock_res.rowcount:
             raise HTTPException(status_code=409, detail="Manual sync already in progress")

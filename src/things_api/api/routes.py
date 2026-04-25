@@ -112,6 +112,7 @@ class TaskCreate(BaseModel):
     area_uuid: str | None = None
     project_uuid: str | None = None
     heading_uuid: str | None = None
+    contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
     reminder_time: int | None = None
@@ -126,6 +127,7 @@ class TaskUpdate(BaseModel):
     area_uuid: str | None = None
     project_uuid: str | None = None
     heading_uuid: str | None = None
+    contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
     reminder_time: int | None = None

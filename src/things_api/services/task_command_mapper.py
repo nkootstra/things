@@ -27,6 +27,7 @@ class TaskCommandMapper:
             "area_uuid": body.area_uuid,
             "project_uuid": body.project_uuid,
             "heading_uuid": body.heading_uuid,
+            "contact_uuid": body.contact_uuid,
             "deadline": body.deadline,
             "start_date": body.start_date,
             "reminder_time": body.reminder_time,
