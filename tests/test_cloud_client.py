@@ -85,3 +85,32 @@ async def test_get_items_returns_parsed_items():
     assert "uuid1" in items[0]
 
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_items_warns_on_newer_server_schema(caplog):
+    import logging
+    from things_api.cloud.client import ThingsCloudClient
+
+    items_payload = {
+        "items": [],
+        "current-item-index": 0,
+        "schema": 999,
+    }
+
+    transport = MockTransport({
+        "/version/1/account/": httpx.Response(
+            200, json={"SYServerHistoryKeyKey": "hist-key-abc123"}
+        ),
+        "/version/1/history/": httpx.Response(200, json=items_payload),
+    })
+
+    client = ThingsCloudClient("test@example.com", "password123")
+    client._client = httpx.AsyncClient(transport=transport, base_url="https://cloud.culturedcode.com")
+
+    with caplog.at_level(logging.WARNING, logger="things_sdk.cloud.client"):
+        await client.authenticate()
+        await client.get_items(start_index=0)
+
+    assert any("schema" in r.message.lower() for r in caplog.records)
+    await client.close()
