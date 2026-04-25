@@ -13,17 +13,14 @@ from xml.etree import ElementTree
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from things_sdk.cloud.handlers import EntityHandlerRegistry, default_registry
 from things_sdk.cloud.schema import (
     ACTION_CREATED,
     ACTION_DELETED,
     ACTION_MODIFIED,
-    AreaPayload,
-    ChecklistItemPayload,
-    TagPayload,
-    TaskPayload,
 )
-from things_sdk.cloud.config import SyncConfig
-from things_sdk.db.models import Area, ChecklistItem, SyncState, Tag, Task
+from things_sdk.protocols import CloudClientProtocol, SyncConfig
+from things_sdk.db.models import SyncState, Task
 
 logger = logging.getLogger(__name__)
 
@@ -143,148 +140,24 @@ def _record_sync_success(state: SyncState, phase: str) -> None:
     state.circuit_open_until = None
 
 
-async def _apply_task(session: AsyncSession, uuid: str, action: int, payload: TaskPayload) -> None:
-    result = await session.execute(select(Task).where(Task.uuid == uuid))
-    task = result.scalar_one_or_none()
-
-    if action == ACTION_DELETED:
-        if task:
-            await session.delete(task)
-        return
-
-    if task is None:
-        task = Task(uuid=uuid)
-        session.add(task)
-
-    if payload.title is not None:
-        task.title = payload.title
-    if payload.notes is not None:
-        task.notes = parse_notes(payload.notes)
-    if payload.status is not None:
-        task.status = payload.status
-    if payload.schedule is not None:
-        task.schedule = payload.schedule
-    if payload.is_project is not None:
-        task.type = 1 if payload.is_project else 0
-    if payload.trashed is not None:
-        task.trashed = payload.trashed
-    if payload.index is not None:
-        task.index = payload.index
-    if payload.today_index is not None:
-        task.today_index = payload.today_index
-    if payload.creation_date is not None:
-        task.creation_date = payload.creation_date
-    if payload.modification_date is not None:
-        task.modification_date = payload.modification_date
-    if payload.start_date is not None:
-        task.start_date = payload.start_date
-    if payload.deadline is not None:
-        task.deadline = payload.deadline
-    if payload.completion_date is not None:
-        task.completion_date = payload.completion_date
-    if payload.area_ids and payload.area_ids:
-        task.area_uuid = payload.area_ids[0]
-    if payload.project_ids and payload.project_ids:
-        task.project_uuid = payload.project_ids[0]
-    if payload.heading_ids and payload.heading_ids:
-        task.heading_uuid = payload.heading_ids[0]
-
-
-async def _apply_area(session: AsyncSession, uuid: str, action: int, payload: AreaPayload) -> None:
-    result = await session.execute(select(Area).where(Area.uuid == uuid))
-    area = result.scalar_one_or_none()
-
-    if action == ACTION_DELETED:
-        if area:
-            await session.delete(area)
-        return
-
-    if area is None:
-        area = Area(uuid=uuid)
-        session.add(area)
-
-    if payload.title is not None:
-        area.title = payload.title
-    if payload.visible is not None:
-        area.visible = payload.visible
-    if payload.index is not None:
-        area.index = payload.index
-
-
-async def _apply_tag(session: AsyncSession, uuid: str, action: int, payload: TagPayload) -> None:
-    result = await session.execute(select(Tag).where(Tag.uuid == uuid))
-    tag = result.scalar_one_or_none()
-
-    if action == ACTION_DELETED:
-        if tag:
-            await session.delete(tag)
-        return
-
-    if tag is None:
-        tag = Tag(uuid=uuid)
-        session.add(tag)
-
-    if payload.title is not None:
-        tag.title = payload.title
-    if payload.shortcut is not None:
-        tag.shortcut = payload.shortcut
-    if payload.parent_ids and payload.parent_ids:
-        tag.parent_uuid = payload.parent_ids[0]
-    if payload.index is not None:
-        tag.index = payload.index
-
-
-async def _apply_checklist(session: AsyncSession, uuid: str, action: int, payload: ChecklistItemPayload) -> None:
-    result = await session.execute(select(ChecklistItem).where(ChecklistItem.uuid == uuid))
-    item = result.scalar_one_or_none()
-
-    if action == ACTION_DELETED:
-        if item:
-            await session.delete(item)
-        return
-
-    task_ref = payload.task_ids[0] if payload.task_ids and payload.task_ids[0] else None
-
-    if item is None:
-        if not task_ref:
-            logger.warning("ChecklistItem %s has no task reference, skipping create", uuid)
-            return
-        item = ChecklistItem(uuid=uuid, task_uuid=task_ref)
-        session.add(item)
-
-    if payload.title is not None:
-        item.title = payload.title
-    if payload.status is not None:
-        item.status = payload.status
-    if payload.index is not None:
-        item.index = payload.index
-    if payload.stop_date is not None:
-        item.stop_date = payload.stop_date
-    if task_ref:
-        item.task_uuid = task_ref
-
-
-_APPLY_MAP: dict[str, tuple] = {
-    "Task6": (TaskPayload, _apply_task),
-    "Area2": (AreaPayload, _apply_area),
-    "Tag3": (TagPayload, _apply_tag),
-    "ChecklistItem3": (ChecklistItemPayload, _apply_checklist),
-}
-
-
-async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
+async def pull_sync(
+    client: CloudClientProtocol,
+    session: AsyncSession,
+    *,
+    registry: EntityHandlerRegistry | None = None,
+) -> dict[str, int]:
     """Pull changes from Things Cloud and apply to local DB."""
     state = await _get_or_create_sync_state(session)
     is_half_open_probe = _prepare_circuit_for_attempt(state)
 
     if not state.history_key:
-        history_key = await client.authenticate()  # type: ignore[attr-defined]
+        history_key = await client.authenticate()
         state.history_key = history_key
 
     try:
         items, new_index = await _with_retry(
             "pull_sync.get_items",
-            lambda: client.get_items(start_index=state.head_index),  # type: ignore[attr-defined]
+            lambda: client.get_items(start_index=state.head_index),
         )
     except Exception as e:
         state.sync_status = "error"
@@ -294,6 +167,7 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
         raise
 
     counts: dict[str, int] = {"created": 0, "modified": 0, "deleted": 0, "skipped": 0}
+    _registry = registry or default_registry
 
     for item in items:
         for uuid, data in item.items():
@@ -301,17 +175,15 @@ async def pull_sync(client: object, session: AsyncSession) -> dict[str, int]:
             action = data.get("t", 0)
             payload_data = data.get("p", {})
 
-            if entity_type not in _APPLY_MAP:
+            handler = _registry.get(entity_type)
+            if handler is None:
                 counts["skipped"] += 1
                 continue
 
-            payload_cls, apply_fn = _APPLY_MAP[entity_type]
             try:
-                # Isolate each item so one bad payload does not roll back
-                # previously applied valid items in this sync batch.
                 async with session.begin_nested():
-                    payload = payload_cls.model_validate(payload_data)
-                    await apply_fn(session, uuid, action, payload)
+                    payload = handler.payload_class.model_validate(payload_data)
+                    await handler.apply(session, uuid, action, payload)
             except Exception:
                 logger.exception("Failed to apply item %s (type=%s)", uuid, entity_type)
                 counts["skipped"] += 1
@@ -368,13 +240,13 @@ def _task_to_wire(task: Task) -> dict:
     return {task.uuid: {"t": ACTION_MODIFIED, "e": "Task6", "p": payload}}
 
 
-async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
+async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[str, int]:
     """Push locally modified tasks to Things Cloud."""
     state = await _get_or_create_sync_state(session)
     is_half_open_probe = _prepare_circuit_for_attempt(state)
 
     if not state.history_key:
-        history_key = await client.authenticate()  # type: ignore[attr-defined]
+        history_key = await client.authenticate()
         state.history_key = history_key
 
     result = await session.execute(select(Task).where(Task.pending_push == True))
@@ -392,7 +264,7 @@ async def push_sync(client: object, session: AsyncSession) -> dict[str, int]:
     try:
         new_index = await _with_retry(
             "push_sync.commit",
-            lambda: client.commit(items, ancestor_index=state.head_index),  # type: ignore[attr-defined]
+            lambda: client.commit(items, ancestor_index=state.head_index),
         )
     except Exception as e:
         state.sync_status = "push_error"
