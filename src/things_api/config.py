@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     sync_circuit_breaker_failures: int = 3
     sync_circuit_breaker_cooldown_seconds: float = 60.0
     readiness_max_sync_errors: int = 5
+    log_format: str = "text"       # "text" or "json" — set to "json" for structured logging
+    enable_metrics: bool = False    # set to true to expose GET /metrics endpoint
     database_url: str = "sqlite+aiosqlite:///./data/things.db"
 
     model_config = {"env_prefix": "", "case_sensitive": False, "env_file": ".env"}

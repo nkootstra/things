@@ -54,6 +54,8 @@ All settings are configured via environment variables (or a `.env` file):
 | `SYNC_CIRCUIT_BREAKER_FAILURES` | No | `3` | Consecutive sync failures required to open the circuit breaker. |
 | `SYNC_CIRCUIT_BREAKER_COOLDOWN_SECONDS` | No | `60` | Cooldown period while breaker is open before a half-open probe is allowed. |
 | `READINESS_MAX_SYNC_ERRORS` | No | `5` | Degrade `/ready` when total sync errors exceed this threshold. |
+| `LOG_FORMAT` | No | `text` | Set to `json` to enable structured JSON logging. |
+| `ENABLE_METRICS` | No | `false` | Set to `true` to expose `GET /metrics` (Prometheus-compatible counters). |
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/things.db` | SQLAlchemy database URL |
 
 ## API Endpoints
@@ -89,6 +91,7 @@ POST   /api/sync            # Manually trigger a full pull + push cycle (rate li
 ```
 GET    /health              # Liveness check (no auth required)
 GET    /ready               # Readiness check (DB + sync degradation/circuit state)
+GET    /metrics             # Prometheus-compatible counters (disabled by default, set ENABLE_METRICS=true)
 ```
 
 ### Create a task
