@@ -10,6 +10,55 @@ Both packages (`things-api` and `things-sdk`) are versioned together.
 
 ---
 
+## [0.2.4] — 2026-04-25
+
+### Added
+- `reminder_time` write path — can now be set via `POST /api/tasks`, `PATCH /api/tasks/{uuid}`, and `TaskService.create_task`
+- `leaves_tombstone` field — populated on pull from wire key `lp`, sent on push
+- `contact_uuid` / delegate field — populated on pull from wire key `do`, sent on push, returned in task dict
+
+---
+
+## [0.2.3] — 2026-04-25
+
+### Fixed
+- Entity version mismatch: `Area2` → `Area3`, `Tag3` → `Tag4` (matching Things 3.22)
+- `Tombstone2` entity handler: hard-deleted entities from other clients are now removed from the local DB
+- `reminder_time` (`al` wire key) now populated on pull and sent on push
+- Schema version logging: warns when Things Cloud reports a schema version ahead of `Schema: 301`
+
+---
+
+## [0.2.2] — 2026-04-25
+
+### Added
+- Optional structured JSON logging (`LOG_FORMAT=json`) — stdlib only, zero extra dependencies
+- Optional Prometheus-compatible metrics endpoint (`ENABLE_METRICS=true`) — exposes `GET /metrics` with counters for pull, push, errors, and circuit breaker opens
+- `DefaultSyncConfig` in SDK public API — removes need for users to define their own config class
+- SQLAlchemy 2.0 `Mapped[]` typed column migration for all domain models
+- Expanded pyright coverage to SDK models, handlers, tasks, SDK core, and examples
+- README badges (CI, Docker, PyPI)
+- CHANGELOG linked from package metadata
+
+### Fixed
+- Scheduler test timing flake on CI (increased sleep window)
+
+---
+
+## [0.2.1] — 2026-04-25
+
+### Added
+- SDK examples directory (`examples/sdk/`) — `list_tasks.py`, `sync_once.py`, `create_task.py`
+- Architecture guardrail tests: enforces SDK public surface usage, API→route layering, and example import boundaries
+- Pyright type-checking foundation for scripts, SDK core, and API service layer
+- `CHANGELOG.md` (this file)
+- `scripts/release.sh` — automated version bump, test, commit, tag, push
+- Post-release verification workflow: installs `things-sdk` from PyPI and pulls Docker image from GHCR after each release
+- SDK and Docker artifact smoke tests in CI
+- README badges, `DefaultSyncConfig`, SQLAlchemy 2.0 typed models
+
+---
+
 ## [0.2.0] — 2026-04-25
 
 ### Added
