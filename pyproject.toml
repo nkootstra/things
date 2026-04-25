@@ -31,8 +31,7 @@ dependencies = [
 Homepage = "https://github.com/nkootstra/things"
 Repository = "https://github.com/nkootstra/things"
 Issues = "https://github.com/nkootstra/things/issues"
-Releases = "https://github.com/nkootstra/things/releases"
-Docker = "https://github.com/nkootstra?tab=packages&repo_name=things"
+Changelog = "https://github.com/nkootstra/things/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
