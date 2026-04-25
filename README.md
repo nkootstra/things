@@ -2,11 +2,13 @@
 
 RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the reverse-engineered sync protocol and exposes your tasks, projects, areas, and tags over HTTP/HTTPS.
 
+This repository ships **two related products**:
+- **`things-api`** — a ready-to-run HTTP/HTTPS service
+- **`things-sdk`** — a standalone Python SDK for scripts, CLIs, workers, and integrations
+
 > Looking for the Python library instead of the HTTP service? See [`packages/things-sdk/README.md`](packages/things-sdk/README.md).
 
 ## Which package should I use?
-
-This repository ships **two related products**:
 
 | Use case | What to use |
 |---|---|
