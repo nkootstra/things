@@ -2,6 +2,19 @@
 
 Reusable Python SDK for Things Cloud sync.
 
+> Looking for the HTTP service instead of the Python library? See the root [`README.md`](../../README.md) for `things-api`.
+
+## When should I use this?
+
+Use `things-sdk` when you want to build Python-native tooling on top of Things Cloud, such as:
+- CLI tools
+- automation scripts
+- background workers
+- MCP servers
+- custom internal integrations
+
+If you want a ready-made HTTP/HTTPS service instead, use `things-api` from the repository root.
+
 ## Installation
 
 ```bash
@@ -72,3 +85,13 @@ asyncio.run(main())
 | `CloudClientProtocol` | Protocol for custom client implementations |
 | `SyncConfig` | Protocol for sync configuration |
 | `EntityHandler` | Strategy pattern for extending sync to new entity types |
+
+## Smoke-tested release artifacts
+
+Releases validate that the SDK is not just built, but actually installable and usable:
+- build wheel + sdist
+- install wheel into a clean virtualenv
+- import `things_sdk`
+- create a SQLAlchemy engine/session factory
+
+That means a published `things-sdk` release has already passed a basic install/import smoke test in CI.
