@@ -16,7 +16,9 @@
     "packages/things-sdk/src/things_sdk/errors.py",
     "packages/things-sdk/src/things_sdk/cloud/client.py",
     "packages/things-sdk/src/things_sdk/cloud/schema.py",
+    "packages/things-sdk/src/things_sdk/cloud/handlers.py",
     "packages/things-sdk/src/things_sdk/db/engine.py",
-    "packages/things-sdk/src/things_sdk/db/models.py"
+    "packages/things-sdk/src/things_sdk/db/models.py",
+    "packages/things-sdk/src/things_sdk/tasks.py"
   ]
 }
