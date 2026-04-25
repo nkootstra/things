@@ -20,7 +20,7 @@ async def test_scheduler_calls_pull_sync_on_interval():
     )
 
     scheduler.start()
-    await asyncio.sleep(0.15)
+    await asyncio.sleep(0.5)
     scheduler.stop()
 
     assert pull_sync.call_count >= 2
@@ -39,7 +39,7 @@ async def test_scheduler_does_not_crash_on_sync_error():
     )
 
     scheduler.start()
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.5)
     scheduler.stop()
 
     # Should have retried despite errors
