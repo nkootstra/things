@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 API_PYPROJECT = ROOT / "pyproject.toml"
 SDK_PYPROJECT = ROOT / "packages" / "things-sdk" / "pyproject.toml"
+MCP_PYPROJECT = ROOT / "packages" / "things-mcp" / "pyproject.toml"
 VERSION_RE = re.compile(r'^(version\s*=\s*")([^"]+)("\s*)$', re.MULTILINE)
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -26,7 +27,7 @@ def replace_version(content: str, version: str) -> str:
 
 def update_versions(version: str) -> None:
     validate_version(version)
-    for path in (API_PYPROJECT, SDK_PYPROJECT):
+    for path in (API_PYPROJECT, SDK_PYPROJECT, MCP_PYPROJECT):
         path.write_text(replace_version(path.read_text(), version))
 
 
@@ -64,7 +65,7 @@ def main() -> None:
         run(["uv", "sync", "--dev"])
         run(["uv", "run", "pytest", "-q"])
 
-    run(["git", "add", str(API_PYPROJECT.relative_to(ROOT)), str(SDK_PYPROJECT.relative_to(ROOT)), "uv.lock"])
+    run(["git", "add", str(API_PYPROJECT.relative_to(ROOT)), str(SDK_PYPROJECT.relative_to(ROOT)), str(MCP_PYPROJECT.relative_to(ROOT)), "uv.lock"])
     run(["git", "commit", "-m", f"release: v{args.version}"])
     run(["git", "tag", f"v{args.version}"])
 
