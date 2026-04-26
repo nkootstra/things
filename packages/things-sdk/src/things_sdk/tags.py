@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import time
-import uuid as uuid_mod
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from things_sdk.cloud.protocol import generate_uuid
 from things_sdk.db.models import Tag, TaskTag
 from things_sdk.errors import EntityNotFoundError, ThingsSDKError
 
@@ -36,12 +36,13 @@ class TagService:
             parent_uuid = parent_tag["uuid"]
 
         tag = Tag(
-            uuid=uuid_mod.uuid4().hex[:22],
+            uuid=generate_uuid(),
             title=title,
             parent_uuid=parent_uuid,
             shortcut=shortcut,
             index=0,
             pending_push=True,
+            is_new=True,
         )
         session.add(tag)
         await session.commit()

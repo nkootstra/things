@@ -47,6 +47,24 @@ class TaskService(TaskServiceProtocol):
         except EntityNotFoundError:
             raise HTTPException(status_code=404, detail="Task not found")
 
+    async def create_checklist_item(self, session, *, task_uuid, title):
+        try:
+            return await self._sdk.create_checklist_item(session, task_uuid=task_uuid, title=title)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    async def complete_checklist_item(self, session, uuid):
+        try:
+            return await self._sdk.complete_checklist_item(session, uuid)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Checklist item not found")
+
+    async def uncomplete_checklist_item(self, session, uuid):
+        try:
+            return await self._sdk.uncomplete_checklist_item(session, uuid)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Checklist item not found")
+
     # Smart lists
 
     async def list_inbox(self, session, *, limit=None, offset=None):

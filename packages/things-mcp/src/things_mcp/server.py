@@ -164,6 +164,7 @@ async def create_task(
     area_uuid: str | None = None,
     deadline: float | None = None,
     start_date: float | None = None,
+    evening: bool = False,
 ) -> str:
     """Create a new task in Things3.
 
@@ -176,6 +177,7 @@ async def create_task(
         area_uuid: UUID of the area to assign this task to.
         deadline: Unix timestamp for the deadline.
         start_date: Unix timestamp for the start date (schedules for a specific day).
+        evening: If True, schedule for 'This Evening' instead of morning.
     """
     payload: dict = {"title": title, "schedule": schedule}
     if notes is not None:
@@ -190,6 +192,8 @@ async def create_task(
         payload["deadline"] = deadline
     if start_date is not None:
         payload["start_date"] = start_date
+    if evening:
+        payload["start_bucket"] = 1
     result = await _get_client().create_task(payload)
     return json.dumps(result, indent=2)
 
@@ -274,17 +278,20 @@ async def delete_task(uuid: str) -> str:
 
 
 @mcp.tool()
-async def schedule_task(uuid: str, schedule: str, start_date: float | None = None) -> str:
+async def schedule_task(uuid: str, schedule: str, start_date: float | None = None, evening: bool = False) -> str:
     """Schedule a task for today, anytime, someday, or a specific date.
 
     Args:
         uuid: Task UUID.
         schedule: 'inbox', 'anytime', or 'someday'.
         start_date: Optional Unix timestamp to schedule for a specific day.
+        evening: If True, schedule for "This Evening" instead of morning.
     """
     payload: dict = {"schedule": schedule}
     if start_date is not None:
         payload["start_date"] = start_date
+    if evening:
+        payload["start_bucket"] = 1
     result = await _get_client().update_task(uuid, payload)
     return json.dumps(result, indent=2)
 
@@ -338,6 +345,40 @@ async def trigger_sync() -> str:
     Call this after making changes so they appear on all your devices.
     """
     result = await _get_client().trigger_sync()
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def add_checklist_item(task_uuid: str, title: str) -> str:
+    """Add a checklist item (sub-task) to a task.
+
+    Args:
+        task_uuid: UUID of the parent task.
+        title: Checklist item text.
+    """
+    result = await _get_client().create_checklist_item(task_uuid, title)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def complete_checklist_item(uuid: str) -> str:
+    """Check off a checklist item.
+
+    Args:
+        uuid: Checklist item UUID.
+    """
+    result = await _get_client().complete_checklist_item(uuid)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def uncomplete_checklist_item(uuid: str) -> str:
+    """Uncheck a checklist item.
+
+    Args:
+        uuid: Checklist item UUID.
+    """
+    result = await _get_client().uncomplete_checklist_item(uuid)
     return json.dumps(result, indent=2)
 
 

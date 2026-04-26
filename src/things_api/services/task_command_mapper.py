@@ -30,6 +30,7 @@ class TaskCommandMapper:
             "contact_uuid": body.contact_uuid,
             "deadline": body.deadline,
             "start_date": body.start_date,
+            "start_bucket": body.start_bucket,
             "reminder_time": body.reminder_time,
             "tags": body.tags,
             "auto_create_tags": body.auto_create_tags,

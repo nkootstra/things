@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import time
-import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from things_sdk.cloud.protocol import generate_uuid
 from things_sdk.db.models import Area, ChecklistItem, Tag, Task, TaskTag
 from things_sdk.errors import EntityNotFoundError
 _STATUS_LABELS = {0: "pending", 2: "cancelled", 3: "completed"}
@@ -208,13 +208,14 @@ class TaskService:
         contact_uuid: str | None = None,
         deadline: float | None,
         start_date: float | None,
+        start_bucket: int | None = None,
         reminder_time: int | None = None,
         tags: list[str] | None = None,
         auto_create_tags: bool = False,
     ) -> dict:
         now = time.time()
         task = Task(
-            uuid=uuid_mod.uuid4().hex[:22],
+            uuid=generate_uuid(),
             title=title,
             notes=notes or "",
             status=status,
@@ -226,10 +227,12 @@ class TaskService:
             contact_uuid=contact_uuid,
             deadline=deadline,
             start_date=start_date,
+            start_bucket=start_bucket or 0,
             reminder_time=reminder_time,
             creation_date=now,
             modification_date=now,
             pending_push=True,
+            is_new=True,
         )
         session.add(task)
         await session.flush()
@@ -271,6 +274,72 @@ class TaskService:
         task.modification_date = time.time()
         task.pending_push = True
         await session.commit()
+
+    # --- Checklist operations ---
+
+    async def create_checklist_item(
+        self, session: AsyncSession, *, task_uuid: str, title: str
+    ) -> dict:
+        """Add a checklist item to a task."""
+        result = await session.execute(select(Task).where(Task.uuid == task_uuid))
+        if not result.scalar_one_or_none():
+            raise EntityNotFoundError("Task", task_uuid)
+
+        now = time.time()
+        item = ChecklistItem(
+            uuid=generate_uuid(),
+            title=title,
+            status=0,
+            index=0,
+            task_uuid=task_uuid,
+            creation_date=now,
+            modification_date=now,
+            pending_push=True,
+            is_new=True,
+        )
+        session.add(item)
+        await session.commit()
+        return self._checklist_item_to_dict(item)
+
+    async def complete_checklist_item(self, session: AsyncSession, uuid: str) -> dict:
+        """Mark a checklist item as completed."""
+        result = await session.execute(select(ChecklistItem).where(ChecklistItem.uuid == uuid))
+        item = result.scalar_one_or_none()
+        if not item:
+            raise EntityNotFoundError("ChecklistItem", uuid)
+
+        now = time.time()
+        item.status = 3
+        item.stop_date = now
+        item.modification_date = now
+        item.pending_push = True
+        await session.commit()
+        return self._checklist_item_to_dict(item)
+
+    async def uncomplete_checklist_item(self, session: AsyncSession, uuid: str) -> dict:
+        """Mark a checklist item as pending."""
+        result = await session.execute(select(ChecklistItem).where(ChecklistItem.uuid == uuid))
+        item = result.scalar_one_or_none()
+        if not item:
+            raise EntityNotFoundError("ChecklistItem", uuid)
+
+        now = time.time()
+        item.status = 0
+        item.stop_date = None
+        item.modification_date = now
+        item.pending_push = True
+        await session.commit()
+        return self._checklist_item_to_dict(item)
+
+    def _checklist_item_to_dict(self, ci: ChecklistItem) -> dict:
+        return {
+            "uuid": ci.uuid,
+            "title": ci.title,
+            "status": _CHECKLIST_STATUS_LABELS.get(ci.status, str(ci.status)),
+            "index": ci.index,
+            "stop_date": _ts_to_utc(ci.stop_date),
+            "task_uuid": ci.task_uuid,
+        }
 
     # --- Tag helpers ---
 
@@ -360,6 +429,7 @@ class TaskService:
             "trashed": t.trashed,
             "index": t.index,
             "today_index": t.today_index,
+            "start_bucket": t.start_bucket,
             "creation_date": _ts_to_utc(t.creation_date),
             "modification_date": _ts_to_utc(t.modification_date),
             "start_date": _ts_to_utc(t.start_date),

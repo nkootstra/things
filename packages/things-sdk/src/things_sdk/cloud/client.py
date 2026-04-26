@@ -2,15 +2,46 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
+import uuid as uuid_mod
 from urllib.parse import quote
 
 import httpx
 
 BASE_URL = "https://cloud.culturedcode.com"
+
+# Client info matching Things3 Mac format
+_CLIENT_INFO = base64.b64encode(json.dumps({
+    "dm": "unknown",
+    "lr": "US",
+    "nf": True,
+    "nk": True,
+    "nn": "ThingsMac",
+    "nv": "32211507",
+    "on": "macOS",
+    "ov": "14.0",
+    "pl": "en",
+    "ul": "en-Latn-US",
+}, separators=(",", ":")).encode()).decode()
+
+# Stable app instance ID (generated once, reused)
+_APP_INSTANCE_ID = (
+    uuid_mod.uuid5(uuid_mod.NAMESPACE_DNS, "things-sdk.local").hex
+    + "-com.culturedcode.ThingsMac-"
+    + uuid_mod.uuid5(uuid_mod.NAMESPACE_DNS, "things-sdk.instance").hex
+)
+
 DEFAULT_HEADERS = {
     "App-Id": "com.culturedcode.ThingsMac",
     "Schema": "301",
+    "User-Agent": "ThingsMac/32211507",
+    "Accept": "application/json",
+    "Accept-Charset": "UTF-8",
+    "Push-Priority": "5",
+    "things-client-info": _CLIENT_INFO,
+    "App-Instance-Id": _APP_INSTANCE_ID,
 }
 
 logger = logging.getLogger(__name__)
@@ -105,20 +136,30 @@ class ThingsCloudClient:
             current_start = current_start + len(items)
 
     async def commit(self, items: list[dict], ancestor_index: int) -> int:
-        """Push changes to Things Cloud."""
+        """Push changes to Things Cloud.
+
+        Items is a list of single-key dicts [{uuid: {t, e, p}}, ...].
+        These are merged into a single flat dict for the commit body.
+        """
         if not self.history_key:
             await self.authenticate()
 
         client = await self._get_client()
         encoded_password = quote(self.password, safe="")
 
+        # Merge list of single-key dicts into one flat dict
+        body: dict = {}
+        for item in items:
+            body.update(item)
+
         resp = await client.post(
             f"/version/1/history/{self.history_key}/commit",
-            params={"ancestor-index": ancestor_index},
-            json=items,
+            params={"ancestor-index": ancestor_index, "_cnt": len(items)},
+            json=body,
             headers={
                 "Authorization": f"Password {encoded_password}",
-                "Content-Type": "application/json",
+                "Content-Type": "application/json; charset=UTF-8",
+                "Content-Encoding": "UTF-8",
             },
         )
         resp.raise_for_status()
