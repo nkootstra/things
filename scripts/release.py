@@ -63,7 +63,7 @@ def main() -> None:
 
     if not args.skip_tests:
         run(["uv", "sync", "--dev"])
-        run(["uv", "run", "pytest", "-q"])
+        run(["uv", "run", "python", "-m", "pytest", "-q"])
 
     run(["git", "add", str(API_PYPROJECT.relative_to(ROOT)), str(SDK_PYPROJECT.relative_to(ROOT)), str(MCP_PYPROJECT.relative_to(ROOT)), "uv.lock"])
     run(["git", "commit", "-m", f"release: v{args.version}"])
