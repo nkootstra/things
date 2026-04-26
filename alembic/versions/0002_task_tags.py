@@ -28,9 +28,25 @@ def upgrade() -> None:
 
     op.add_column("tag", sa.Column("pending_push", sa.Boolean(), server_default="0"))
     op.add_column("tag", sa.Column("pending_delete", sa.Boolean(), server_default="0"))
+    op.add_column("tag", sa.Column("is_new", sa.Boolean(), server_default="0"))
+
+    op.add_column("task", sa.Column("is_new", sa.Boolean(), server_default="0"))
+    op.add_column("task", sa.Column("start_bucket", sa.Integer(), server_default="0"))
+
+    op.add_column("checklist_item", sa.Column("creation_date", sa.Float(), nullable=True))
+    op.add_column("checklist_item", sa.Column("modification_date", sa.Float(), nullable=True))
+    op.add_column("checklist_item", sa.Column("pending_push", sa.Boolean(), server_default="0"))
+    op.add_column("checklist_item", sa.Column("is_new", sa.Boolean(), server_default="0"))
 
 
 def downgrade() -> None:
+    op.drop_column("checklist_item", "is_new")
+    op.drop_column("checklist_item", "pending_push")
+    op.drop_column("checklist_item", "modification_date")
+    op.drop_column("checklist_item", "creation_date")
+    op.drop_column("task", "start_bucket")
+    op.drop_column("task", "is_new")
+    op.drop_column("tag", "is_new")
     op.drop_column("tag", "pending_delete")
     op.drop_column("tag", "pending_push")
     op.drop_index("ix_task_tag_tag_uuid", table_name="task_tag")

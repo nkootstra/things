@@ -23,6 +23,7 @@ Usage::
 """
 
 from things_sdk.cloud.client import ThingsCloudClient as ThingsClient, ThingsCloudAuthError
+from things_sdk.cloud.protocol import generate_uuid, is_valid_things_uuid
 from things_sdk.cloud.sync import (
     SyncCircuitOpenError,
     configure as configure_sync,

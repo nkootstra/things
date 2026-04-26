@@ -122,6 +122,17 @@ class ThingsAPIClient:
     async def trigger_sync(self) -> dict:
         return await self._post("/api/sync", {})
 
+    # --- Checklist items ---
+
+    async def create_checklist_item(self, task_uuid: str, title: str) -> dict:
+        return await self._post(f"/api/tasks/{task_uuid}/checklist", {"title": title})
+
+    async def complete_checklist_item(self, uuid: str) -> dict:
+        return await self._post(f"/api/checklist/{uuid}/complete", {})
+
+    async def uncomplete_checklist_item(self, uuid: str) -> dict:
+        return await self._post(f"/api/checklist/{uuid}/uncomplete", {})
+
 
 def _pagination(limit: int | None, offset: int | None) -> dict | None:
     params: dict = {}

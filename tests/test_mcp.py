@@ -34,7 +34,7 @@ def test_all_write_tools_registered():
 
 
 def test_tool_count():
-    assert len(mcp._tool_manager._tools) == 22
+    assert len(mcp._tool_manager._tools) == 25
 
 
 def test_all_tools_have_descriptions():

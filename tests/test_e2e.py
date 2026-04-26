@@ -207,11 +207,20 @@ async def test_e2e_create_task_push_includes_tags(e2e):
     sync_data = sync_resp.json()
     assert sync_data["push"]["pushed"] >= 1
 
-    # Verify the cloud received the task with tags
+    # Verify the cloud received the task with tags in follow-up update
+    # New tasks use two-step: create (tg=[]) then update (tg=[uuid])
     task_payload = cloud.get_pushed_task_payload(task_uuid)
     assert task_payload is not None, "Task not found in push payload"
-    assert "tg" in task_payload, "tg field missing from push payload"
-    assert tag_uuid in task_payload["tg"]
+    # Tags are in the follow-up commit, not the create
+    # Check that at least one commit has the tag
+    found_tag = False
+    for batch in cloud.committed_batches:
+        for item in batch:
+            if task_uuid in item:
+                p = item[task_uuid].get("p", {})
+                if tag_uuid in p.get("tg", []):
+                    found_tag = True
+    assert found_tag, "Tag not found in any push payload"
 
 
 @pytest.mark.asyncio
@@ -231,20 +240,21 @@ async def test_e2e_push_tag_before_task(e2e):
     # Sync
     await client.post("/api/sync")
 
-    # In the last batch, tag should appear before task
-    batch = cloud.last_batch
-    tag_index = None
-    task_index = None
+    # In the commit batches, tag entity should appear before task.
+    # Tags are in batch 1 (main), follow-up updates in batch 2.
+    batch = cloud.last_batch if len(cloud.committed_batches) == 1 else cloud.committed_batches[0]
+    tag_found = False
+    task_found = False
     for i, item in enumerate(batch):
         for uuid, data in item.items():
             if data.get("e") == "Tag4":
-                tag_index = i
+                tag_found = True
+                assert not task_found, "Tag should come before task in batch"
             if data.get("e") == "Task6":
-                task_index = i
+                task_found = True
 
-    assert tag_index is not None, "Tag not found in push batch"
-    assert task_index is not None, "Task not found in push batch"
-    assert tag_index < task_index, f"Tag (idx={tag_index}) should come before task (idx={task_index})"
+    assert tag_found, "Tag not found in push batch"
+    assert task_found, "Task not found in push batch"
 
 
 @pytest.mark.asyncio
@@ -487,7 +497,15 @@ async def test_e2e_full_round_trip(e2e):
     task_payload = cloud.get_pushed_task_payload(task_uuid)
     assert task_payload is not None
     assert task_payload["tt"] == "Round-trip task"
-    assert tag_uuid in task_payload["tg"]
+    # Tags are in follow-up commit for new tasks
+    found_tag = False
+    for batch in cloud.committed_batches:
+        for item in batch:
+            if task_uuid in item:
+                p = item[task_uuid].get("p", {})
+                if tag_uuid in p.get("tg", []):
+                    found_tag = True
+    assert found_tag, "Tag not found in push"
 
     tag_payload = cloud.get_pushed_tag_payload(tag_uuid)
     assert tag_payload is not None

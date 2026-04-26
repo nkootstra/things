@@ -20,6 +20,7 @@ class Task(Base):
     trashed: Mapped[bool] = mapped_column(Boolean, default=False)
     index: Mapped[int] = mapped_column(Integer, default=0)
     today_index: Mapped[int] = mapped_column(Integer, default=0)
+    start_bucket: Mapped[int] = mapped_column(Integer, default=0)  # 0=morning, 1=evening
 
     creation_date: Mapped[float | None] = mapped_column(Float, nullable=True)
     modification_date: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -36,6 +37,7 @@ class Task(Base):
     pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
     local_modified_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     leaves_tombstone: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_new: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Area(Base):
@@ -57,6 +59,7 @@ class Tag(Base):
     index: Mapped[int] = mapped_column(Integer, default=0)
     pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
     pending_delete: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_new: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class TaskTag(Base):
@@ -75,6 +78,10 @@ class ChecklistItem(Base):
     index: Mapped[int] = mapped_column(Integer, default=0)
     stop_date: Mapped[float | None] = mapped_column(Float, nullable=True)
     task_uuid: Mapped[str | None] = mapped_column(String(22), nullable=True)
+    creation_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    modification_date: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pending_push: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_new: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class SyncState(Base):

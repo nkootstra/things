@@ -158,6 +158,38 @@ async def get_task_checklist(
     return await task_service.get_task_checklist(session, uuid)
 
 
+class ChecklistItemCreate(BaseModel):
+    title: str
+
+
+@router.post("/tasks/{uuid}/checklist", status_code=201)
+async def create_checklist_item(
+    uuid: str,
+    body: ChecklistItemCreate,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.create_checklist_item(session, task_uuid=uuid, title=body.title)
+
+
+@router.post("/checklist/{uuid}/complete")
+async def complete_checklist_item(
+    uuid: str,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.complete_checklist_item(session, uuid)
+
+
+@router.post("/checklist/{uuid}/uncomplete")
+async def uncomplete_checklist_item(
+    uuid: str,
+    session: AsyncSession = Depends(get_session),
+    task_service: TaskServiceProtocol = Depends(get_task_service),
+):
+    return await task_service.uncomplete_checklist_item(session, uuid)
+
+
 @router.get("/areas")
 async def list_areas(
     session: AsyncSession = Depends(get_session),
@@ -206,6 +238,7 @@ class TaskCreate(BaseModel):
     contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    start_bucket: int | None = None  # 0=morning (default), 1=evening
     reminder_time: int | None = None
     tags: list[str] | None = None
     auto_create_tags: bool = False
@@ -223,6 +256,7 @@ class TaskUpdate(BaseModel):
     contact_uuid: str | None = None
     deadline: float | None = None
     start_date: float | None = None
+    start_bucket: int | None = None
     reminder_time: int | None = None
     tags: list[str] | None = None
     auto_create_tags: bool = False
