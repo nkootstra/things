@@ -101,6 +101,14 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `list_tags` | All tags |
 | `list_projects` | All projects |
 | `list_tasks_by_tag` | Tasks with a specific tag |
+| `list_all_tasks` | Every non-trashed task across the library |
+
+> **Pagination is opt-in.** Every list tool exposes `limit` and `offset`
+> arguments, but they default to unset — calling a list tool with no
+> arguments returns the full result set in one response. Agents that need
+> every task should leave the parameters unset; only page (increment
+> `offset` by `limit` until the response is shorter than `limit`) when a
+> result set is too large to handle in one chunk.
 
 ### Write Tools
 | Tool | Description |

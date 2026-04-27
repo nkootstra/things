@@ -53,8 +53,23 @@ class TaskCommandMapper:
         return updates
 
     def _resolve_enum(self, value, enum_cls: type[IntEnum]) -> int:
+        if isinstance(value, bool):
+            # bool is a subclass of int; reject it explicitly so True/False
+            # don't silently coerce to status=1 / status=0.
+            valid = ", ".join(e.name for e in enum_cls)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid value {value!r}. Valid: {valid}",
+            )
         if isinstance(value, int):
-            return value
+            try:
+                return enum_cls(value).value
+            except ValueError:
+                valid_ints = ", ".join(f"{e.name}={e.value}" for e in enum_cls)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid value {value}. Valid: {valid_ints}",
+                )
         if isinstance(value, str):
             try:
                 return enum_cls[value].value

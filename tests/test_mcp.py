@@ -19,6 +19,7 @@ def test_all_read_tools_registered():
         "list_inbox", "list_today", "list_upcoming", "list_anytime",
         "list_someday", "list_logbook", "list_trash", "get_task",
         "list_areas", "list_tags", "list_projects", "list_tasks_by_tag",
+        "list_all_tasks",
     }
     assert expected_read.issubset(tool_names), f"Missing: {expected_read - tool_names}"
 
@@ -34,7 +35,7 @@ def test_all_write_tools_registered():
 
 
 def test_tool_count():
-    assert len(mcp._tool_manager._tools) == 25
+    assert len(mcp._tool_manager._tools) == 26
 
 
 def test_all_tools_have_descriptions():

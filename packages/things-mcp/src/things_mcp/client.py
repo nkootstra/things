@@ -83,8 +83,8 @@ class ThingsAPIClient:
     async def get_task(self, uuid: str) -> dict:
         return await self._get(f"/api/tasks/{uuid}")
 
-    async def list_tasks(self) -> list:
-        return await self._get("/api/tasks")
+    async def list_tasks(self, limit: int | None = None, offset: int | None = None) -> list:
+        return await self._get("/api/tasks", _pagination(limit, offset))
 
     async def create_task(self, payload: dict) -> dict:
         return await self._post("/api/tasks", payload)
@@ -103,8 +103,18 @@ class ThingsAPIClient:
     async def create_tag(self, payload: dict) -> dict:
         return await self._post("/api/tags", payload)
 
-    async def list_tasks_by_tag(self, tag: str, include_descendants: bool = True) -> list:
-        params = {"include_descendants": str(include_descendants).lower()}
+    async def list_tasks_by_tag(
+        self,
+        tag: str,
+        include_descendants: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list:
+        params: dict = {"include_descendants": str(include_descendants).lower()}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         return await self._get(f"/api/tasks/by-tag/{tag}", params)
 
     # --- Areas & Projects ---

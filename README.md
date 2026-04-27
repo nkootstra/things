@@ -87,7 +87,12 @@ GET    /api/tasks/logbook   # Completed tasks (default: last 30 days, ?since=<ep
 GET    /api/tasks/trash     # Trashed tasks
 ```
 
-All smart lists support `?limit=<int>&offset=<int>` for pagination.
+All smart lists, `GET /api/tasks`, and `GET /api/tasks/by-tag/{tag}` accept
+optional `?limit=<int>&offset=<int>` query params. **Pagination is opt-in**:
+omit both to fetch the complete result set in a single response, which is
+the recommended path for agents and scripts that need every task. To page
+through a very large list, increment `offset` by `limit` and stop when the
+returned array is shorter than `limit`.
 
 ### Tags
 
@@ -96,7 +101,7 @@ GET    /api/tags            # List all tags
 POST   /api/tags            # Create a tag
 PATCH  /api/tags/{uuid}     # Update a tag
 DELETE /api/tags/{uuid}     # Delete a tag
-GET    /api/tasks/by-tag/{tag}  # List tasks by tag UUID or name (?include_descendants=true)
+GET    /api/tasks/by-tag/{tag}  # List tasks by tag UUID or name (?include_descendants=true&limit=&offset=)
 ```
 
 Tasks now include a `tags` field in all responses. Pass `tags: ["uuid-or-name", ...]` when creating or updating tasks.

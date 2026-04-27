@@ -957,6 +957,7 @@ name = "things-api"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "alembic" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
     { name = "things-sdk" },
@@ -984,6 +985,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic", specifier = ">=1.14" },
     { name = "alembic", marker = "extra == 'dev'", specifier = ">=1.14" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", marker = "extra == 'dev'" },

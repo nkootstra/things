@@ -218,10 +218,25 @@ async def pull_sync(
 
     state.head_index = new_index
     state.last_sync_at = time.time()
-    state.sync_status = "synced"
-    state.last_error = None
     state.last_pull_skipped = counts["skipped"]
-    _record_sync_success(state, phase="pull")
+
+    if counts["skipped"] > 0:
+        # Skipped items are permanently lost from local state once head_index
+        # advances. Treat any skip as a soft error so the operator sees it via
+        # /api/sync/status and the circuit breaker eventually trips on chronic
+        # skip patterns rather than failing silently.
+        logger.error(
+            "pull_sync skipped %d items at head_index=%d; investigate handler errors",
+            counts["skipped"],
+            new_index,
+        )
+        state.sync_status = "synced_with_skips"
+        state.last_error = f"pull_sync skipped {counts['skipped']} items"
+        _record_sync_error(state, force_open=is_half_open_probe)
+    else:
+        state.sync_status = "synced"
+        state.last_error = None
+        _record_sync_success(state, phase="pull")
 
     await session.commit()
     return counts
@@ -440,29 +455,44 @@ async def push_sync(client: CloudClientProtocol, session: AsyncSession) -> dict[
 
     batch_tag_deletes: list[dict] = [_tag_delete_wire(t.uuid) for t in pending_tag_deletes]
 
+    # Advance head_index only after BOTH cloud commits succeed AND flag clearing
+    # is staged in the same DB transaction. Persisting an advanced head_index in
+    # the exception path would cause stale ancestor_index on retry and silent
+    # data loss. Use locals; assign to state only on full success.
+    pre_push_head_index = state.head_index
+    new_main_index = pre_push_head_index
+    new_followup_index = pre_push_head_index
+
     try:
         # Commit main batch
         if batch_main or batch_tag_deletes:
             all_main = batch_main + batch_tag_deletes
-            new_index = await _with_retry(
+            new_main_index = await _with_retry(
                 "push_sync.commit",
-                lambda: client.commit(all_main, ancestor_index=state.head_index),
+                lambda: client.commit(all_main, ancestor_index=pre_push_head_index),
             )
-            state.head_index = new_index
 
         # Commit follow-up batch (deadline/completion updates)
         if batch_followup:
-            new_index = await _with_retry(
+            ancestor = new_main_index
+            new_followup_index = await _with_retry(
                 "push_sync.commit_followup",
-                lambda: client.commit(batch_followup, ancestor_index=state.head_index),
+                lambda: client.commit(batch_followup, ancestor_index=ancestor),
             )
-            state.head_index = new_index
+        else:
+            new_followup_index = new_main_index
     except Exception as e:
+        # Do NOT advance head_index or clear pending_push flags. The next pull
+        # will catch up any items the cloud accepted; the next push retries
+        # the rest with a fresh ancestor_index.
         state.sync_status = "push_error"
         state.last_error = str(e)
         _record_sync_error(state, force_open=is_half_open_probe)
         await session.commit()
         raise
+
+    # Cloud commits succeeded — atomically advance head_index and clear flags.
+    state.head_index = new_followup_index
 
     for tag in pending_tags:
         tag.pending_push = False

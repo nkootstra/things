@@ -14,7 +14,15 @@ class SyncServiceProtocol(Protocol):
 
 
 class TaskServiceProtocol(Protocol):
-    async def list_tasks(self, session: AsyncSession, *, tag: str | None = None, include_descendants: bool = True) -> list[dict]: ...
+    async def list_tasks(
+        self,
+        session: AsyncSession,
+        *,
+        tag: str | None = None,
+        include_descendants: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]: ...
 
     async def get_task(self, session: AsyncSession, uuid: str) -> dict: ...
 
