@@ -10,7 +10,7 @@ Both packages (`things-api` and `things-sdk`) are versioned together.
 
 ---
 
-## [Unreleased]
+## [0.3.3] — 2026-04-28
 
 ### Added
 - **Full-text search** — `GET /api/tasks/search?q=...` and MCP `search_tasks` tool. Case-insensitive substring match across task title, notes, and (by default) checklist items. Trashed tasks excluded by default.
