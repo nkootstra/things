@@ -1,6 +1,6 @@
 [project]
 name = "things-sdk"
-version = "0.3.2"
+version = "0.3.3"
 description = "Reusable Python SDK for Things Cloud sync — domain models, cloud client, sync engine, and task operations"
 readme = "README.md"
 authors = [
