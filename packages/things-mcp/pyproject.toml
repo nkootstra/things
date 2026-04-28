@@ -1,6 +1,6 @@
 [project]
 name = "things-cloud-mcp"
-version = "0.3.1"
+version = "0.3.2"
 description = "Model Context Protocol server for Things3 — gives AI agents read/write access to your tasks via things-api"
 readme = "README.md"
 authors = [
