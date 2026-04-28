@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION="${1:?usage: verify-published-mcp.sh <version>}"
-PACKAGE="things-mcp==${VERSION}"
+PACKAGE="things-cloud-mcp==${VERSION}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -23,7 +23,7 @@ assert hasattr(server, "mcp")
 assert ThingsAPIClient is not None
 print("Published MCP verification passed")
 PY
-    which things-mcp
+    which things-cloud-mcp
     exit 0
   fi
 

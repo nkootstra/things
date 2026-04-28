@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${1:-$ROOT_DIR/dist}"
-WHEEL="$(find "$DIST_DIR" -maxdepth 1 -name 'things_mcp-*.whl' | head -n 1)"
+WHEEL="$(find "$DIST_DIR" -maxdepth 1 -name 'things_cloud_mcp-*.whl' | head -n 1)"
 
 if [[ -z "$WHEEL" ]]; then
-  echo "No things-mcp wheel found in $DIST_DIR" >&2
+  echo "No things-cloud-mcp wheel found in $DIST_DIR" >&2
   exit 1
 fi
 
@@ -41,4 +41,4 @@ PY
 
 # Confirm the console script is on PATH and exits non-zero on bad input
 # (it expects to talk over stdio; --help is enough to prove it loads).
-which things-mcp
+which things-cloud-mcp

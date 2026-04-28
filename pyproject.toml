@@ -49,7 +49,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "httpx",
     "alembic>=1.14",
-    "things-mcp",
+    "things-cloud-mcp",
     "pyright>=1.1.409",
 ]
 
@@ -62,7 +62,7 @@ asyncio_mode = "auto"
 
 [tool.uv.sources]
 things-sdk = { workspace = true }
-things-mcp = { workspace = true }
+things-cloud-mcp = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/things-sdk", "packages/things-mcp"]

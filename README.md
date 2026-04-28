@@ -10,7 +10,7 @@ RESTful API over Things3 data. Syncs bidirectionally with Things Cloud via the r
 This repository ships **three related products**:
 - **`things-api`** — a ready-to-run HTTP/HTTPS service
 - **`things-sdk`** — a standalone Python SDK for scripts, CLIs, workers, and integrations
-- **`things-mcp`** — an MCP server that gives AI agents (Claude, Codex, etc.) read/write access to your tasks
+- **`things-cloud-mcp`** — an MCP server that gives AI agents (Claude, Codex, etc.) read/write access to your tasks
 
 > Looking for the Python library instead of the HTTP service? See [`packages/things-sdk/README.md`](packages/things-sdk/README.md).
 > Want to connect your AI agent? See [`packages/things-mcp/README.md`](packages/things-mcp/README.md).
@@ -21,7 +21,7 @@ This repository ships **three related products**:
 |---|---|
 | You want a hosted/self-hosted HTTP/HTTPS API | `things-api` |
 | You want to build a CLI, script, worker, or integration in Python | `things-sdk` |
-| You want AI agents to read/write your tasks | `things-mcp` (requires a running `things-api`) |
+| You want AI agents to read/write your tasks | `things-cloud-mcp` (requires a running `things-api`) |
 
 If you just want to run a server and call it over HTTP/HTTPS, continue with the API docs below.
 If you want to embed the core functionality directly in Python, jump to the SDK README.
@@ -165,7 +165,7 @@ Things Cloud uses an event-sourced model with a monotonically increasing index. 
 
 The repository uses a uv workspace:
 - root package: `things-api`
-- workspace packages: `things-sdk`, `things-mcp`
+- workspace packages: `things-sdk`, `things-cloud-mcp`
 
 ```sh
 # Install both packages in editable mode
@@ -282,7 +282,7 @@ This project is a monorepo with two packages:
 |---|---|---|
 | `things-sdk` | `packages/things-sdk/` | Reusable core library — models, cloud client, sync engine, task operations |
 | `things-api` | root | FastAPI HTTP service built on top of the SDK |
-| `things-mcp` | `packages/things-mcp/` | MCP server for AI agents (Claude, Codex, etc.) |
+| `things-cloud-mcp` | `packages/things-mcp/` | MCP server for AI agents (Claude, Codex, etc.) |
 
 You can use them together (run the API) or install only the SDK for scripts, CLIs, or other integrations.
 

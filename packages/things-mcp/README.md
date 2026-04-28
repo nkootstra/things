@@ -1,4 +1,4 @@
-# things-mcp
+# things-cloud-mcp
 
 Model Context Protocol (MCP) server for Things3. Gives AI agents full read/write access to your tasks through a running [things-api](https://github.com/nkootstra/things) instance.
 
@@ -11,13 +11,13 @@ A running `things-api` instance with an API key configured.
 ### Install
 
 ```bash
-uvx things-mcp
+uvx things-cloud-mcp
 ```
 
 Or install from source:
 
 ```bash
-pip install things-mcp
+pip install things-cloud-mcp
 ```
 
 ### Environment Variables
@@ -38,7 +38,7 @@ Add to your `.claude/settings.json`:
   "mcpServers": {
     "things": {
       "command": "uvx",
-      "args": ["things-mcp"],
+      "args": ["things-cloud-mcp"],
       "env": {
         "THINGS_API_URL": "http://localhost:8000",
         "THINGS_API_KEY": "your-api-key"
@@ -57,7 +57,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "things": {
       "command": "uvx",
-      "args": ["things-mcp"],
+      "args": ["things-cloud-mcp"],
       "env": {
         "THINGS_API_URL": "http://localhost:8000",
         "THINGS_API_KEY": "your-api-key"
@@ -74,7 +74,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "things": {
       "command": "uvx",
-      "args": ["things-mcp"],
+      "args": ["things-cloud-mcp"],
       "env": {
         "THINGS_API_URL": "http://localhost:8000",
         "THINGS_API_KEY": "your-api-key"
