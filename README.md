@@ -87,6 +87,23 @@ GET    /api/tasks/logbook   # Completed tasks (default: last 30 days, ?since=<ep
 GET    /api/tasks/trash     # Trashed tasks
 ```
 
+### Search
+
+```
+GET    /api/tasks/search?q=<text>           # Full-text search (title, notes, checklist items)
+GET    /api/tasks/search/advanced?...       # Multi-predicate filter (status, type, schedule, area, project, tag, date ranges, modified/completed since)
+```
+
+### Projects
+
+```
+GET    /api/projects                        # List active projects (?include_completed=true to include completed)
+POST   /api/projects                        # Create a project
+PATCH  /api/projects/{uuid}                 # Update a project
+POST   /api/projects/{uuid}/complete        # Mark a project as completed
+DELETE /api/projects/{uuid}                 # Soft-delete (trash) a project
+```
+
 All smart lists, `GET /api/tasks`, and `GET /api/tasks/by-tag/{tag}` accept
 optional `?limit=<int>&offset=<int>` query params. **Pagination is opt-in**:
 omit both to fetch the complete result set in a single response, which is

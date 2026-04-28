@@ -59,6 +59,48 @@ class TaskServiceProtocol(Protocol):
 
     async def list_trash(self, session: AsyncSession, *, limit: int | None = 100, offset: int | None = None) -> list[dict]: ...
 
+    async def list_projects(
+        self,
+        session: AsyncSession,
+        *,
+        include_completed: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]: ...
+
+    async def search_tasks(
+        self,
+        session: AsyncSession,
+        *,
+        query: str,
+        include_trashed: bool = False,
+        include_checklists: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]: ...
+
+    async def search_advanced(
+        self,
+        session: AsyncSession,
+        *,
+        status: int | None = None,
+        type: int | None = None,
+        schedule: int | None = None,
+        area_uuid: str | None = None,
+        project_uuid: str | None = None,
+        tag: str | None = None,
+        include_descendants: bool = True,
+        start_date_from: float | None = None,
+        start_date_to: float | None = None,
+        deadline_from: float | None = None,
+        deadline_to: float | None = None,
+        modified_since: float | None = None,
+        completed_since: float | None = None,
+        include_trashed: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]: ...
+
 
 class TagServiceProtocol(Protocol):
     async def create_tag(self, session: AsyncSession, *, title: str, parent: str | None = None, shortcut: str | None = None) -> dict: ...

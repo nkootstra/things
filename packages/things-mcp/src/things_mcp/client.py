@@ -122,10 +122,59 @@ class ThingsAPIClient:
     async def list_areas(self) -> list:
         return await self._get("/api/areas")
 
-    async def list_projects(self) -> list:
-        """List projects (type=1 tasks)."""
-        tasks = await self._get("/api/tasks")
-        return [t for t in tasks if t.get("type") == "project"]
+    async def list_projects(
+        self,
+        include_completed: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list:
+        params: dict = {"include_completed": str(include_completed).lower()}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        return await self._get("/api/projects", params)
+
+    async def create_project(self, payload: dict) -> dict:
+        return await self._post("/api/projects", payload)
+
+    async def update_project(self, uuid: str, payload: dict) -> dict:
+        return await self._patch(f"/api/projects/{uuid}", payload)
+
+    async def complete_project(self, uuid: str) -> dict:
+        return await self._post(f"/api/projects/{uuid}/complete", {})
+
+    async def delete_project(self, uuid: str) -> None:
+        await self._delete(f"/api/projects/{uuid}")
+
+    # --- Search ---
+
+    async def search_tasks(
+        self,
+        query: str,
+        include_trashed: bool = False,
+        include_checklists: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list:
+        params: dict = {
+            "q": query,
+            "include_trashed": str(include_trashed).lower(),
+            "include_checklists": str(include_checklists).lower(),
+        }
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        return await self._get("/api/tasks/search", params)
+
+    async def search_advanced(self, **kwargs) -> list:
+        params: dict = {}
+        for key, value in kwargs.items():
+            if value is None:
+                continue
+            params[key] = str(value).lower() if isinstance(value, bool) else value
+        return await self._get("/api/tasks/search/advanced", params or None)
 
     # --- Sync ---
 

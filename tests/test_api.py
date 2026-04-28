@@ -422,3 +422,218 @@ async def test_update_task_sets_reminder_time(authed_client, db):
     )
     assert resp.status_code == 200
     assert resp.json()["reminder_time"] == 32400
+
+
+# --- Search ---
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_by_title(authed_client):
+    await authed_client.post("/api/tasks", json={"title": "Buy milk"})
+    await authed_client.post("/api/tasks", json={"title": "Buy bread"})
+    await authed_client.post("/api/tasks", json={"title": "Walk the dog"})
+
+    resp = await authed_client.get("/api/tasks/search", params={"q": "buy"})
+    assert resp.status_code == 200
+    titles = {t["title"] for t in resp.json()}
+    assert titles == {"Buy milk", "Buy bread"}
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_by_notes(authed_client):
+    await authed_client.post("/api/tasks", json={"title": "Errand", "notes": "Pick up dry cleaning"})
+    await authed_client.post("/api/tasks", json={"title": "Other"})
+
+    resp = await authed_client.get("/api/tasks/search", params={"q": "dry cleaning"})
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["title"] == "Errand"
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_excludes_trashed_by_default(authed_client, db):
+    db.add(Task(uuid="search_trash01abcdefghi", title="Find me", trashed=True))
+    db.add(Task(uuid="search_alive01abcdefghi", title="Find me too"))
+    await db.commit()
+
+    resp = await authed_client.get("/api/tasks/search", params={"q": "find me"})
+    titles = [t["title"] for t in resp.json()]
+    assert titles == ["Find me too"]
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_includes_trashed_when_requested(authed_client, db):
+    db.add(Task(uuid="search_trash02abcdefghi", title="Trashed match", trashed=True))
+    db.add(Task(uuid="search_alive02abcdefghi", title="Alive match"))
+    await db.commit()
+
+    resp = await authed_client.get(
+        "/api/tasks/search", params={"q": "match", "include_trashed": "true"}
+    )
+    titles = {t["title"] for t in resp.json()}
+    assert titles == {"Trashed match", "Alive match"}
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_matches_checklist(authed_client, db):
+    task = Task(uuid="search_check01abcdefghi", title="Plan trip")
+    db.add(task)
+    db.add(ChecklistItem(uuid="ci_search01abcdefghijk", title="Book hotel", task_uuid=task.uuid))
+    await db.commit()
+
+    resp = await authed_client.get("/api/tasks/search", params={"q": "hotel"})
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["uuid"] == "search_check01abcdefghi"
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_empty_query_returns_empty(authed_client):
+    await authed_client.post("/api/tasks", json={"title": "Anything"})
+    resp = await authed_client.get("/api/tasks/search", params={"q": ""})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_search_advanced_by_status(authed_client, db):
+    db.add(Task(uuid="adv_pending01abcdefghi", title="Pending one", status=0))
+    db.add(Task(uuid="adv_done01abcdefghijkl", title="Done one", status=3))
+    await db.commit()
+
+    resp = await authed_client.get("/api/tasks/search/advanced", params={"status": "completed"})
+    assert resp.status_code == 200
+    titles = [t["title"] for t in resp.json()]
+    assert titles == ["Done one"]
+
+
+@pytest.mark.asyncio
+async def test_search_advanced_by_deadline_range(authed_client, db):
+    db.add(Task(uuid="adv_dl_past01abcdefghi", title="Past deadline", deadline=1000.0))
+    db.add(Task(uuid="adv_dl_now01abcdefghijk", title="Within range", deadline=2000.0))
+    db.add(Task(uuid="adv_dl_far01abcdefghijk", title="Far future", deadline=9999.0))
+    await db.commit()
+
+    resp = await authed_client.get(
+        "/api/tasks/search/advanced",
+        params={"deadline_from": 1500.0, "deadline_to": 5000.0},
+    )
+    titles = [t["title"] for t in resp.json()]
+    assert titles == ["Within range"]
+
+
+@pytest.mark.asyncio
+async def test_search_advanced_by_modified_since(authed_client, db):
+    db.add(Task(uuid="adv_mod_old01abcdefghi", title="Old", modification_date=100.0))
+    db.add(Task(uuid="adv_mod_new01abcdefghi", title="New", modification_date=2000.0))
+    await db.commit()
+
+    resp = await authed_client.get(
+        "/api/tasks/search/advanced", params={"modified_since": 1000.0}
+    )
+    titles = [t["title"] for t in resp.json()]
+    assert titles == ["New"]
+
+
+@pytest.mark.asyncio
+async def test_search_advanced_by_type_project(authed_client, db):
+    db.add(Task(uuid="adv_type_t01abcdefghijk", title="A task", type=0))
+    db.add(Task(uuid="adv_type_p01abcdefghijk", title="A project", type=1))
+    await db.commit()
+
+    resp = await authed_client.get("/api/tasks/search/advanced", params={"type": "project"})
+    titles = [t["title"] for t in resp.json()]
+    assert titles == ["A project"]
+
+
+@pytest.mark.asyncio
+async def test_search_advanced_invalid_enum_returns_422(authed_client):
+    resp = await authed_client.get("/api/tasks/search/advanced", params={"status": "bogus"})
+    assert resp.status_code == 422
+
+
+# --- Projects ---
+
+
+@pytest.mark.asyncio
+async def test_create_project(authed_client):
+    resp = await authed_client.post("/api/projects", json={"title": "Q2 launch"})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["title"] == "Q2 launch"
+    assert data["type"] == "project"
+    assert data["status"] == "pending"
+    assert data["uuid"]
+
+
+@pytest.mark.asyncio
+async def test_list_projects_excludes_completed_by_default(authed_client):
+    active = await authed_client.post("/api/projects", json={"title": "Active project"})
+    done = await authed_client.post("/api/projects", json={"title": "Done project"})
+    await authed_client.patch(f"/api/projects/{done.json()['uuid']}", json={"status": "completed"})
+
+    resp = await authed_client.get("/api/projects")
+    titles = [p["title"] for p in resp.json()]
+    assert titles == ["Active project"]
+
+
+@pytest.mark.asyncio
+async def test_list_projects_includes_completed_when_requested(authed_client):
+    await authed_client.post("/api/projects", json={"title": "Active"})
+    done = await authed_client.post("/api/projects", json={"title": "Done"})
+    await authed_client.patch(f"/api/projects/{done.json()['uuid']}", json={"status": "completed"})
+
+    resp = await authed_client.get("/api/projects", params={"include_completed": "true"})
+    titles = {p["title"] for p in resp.json()}
+    assert titles == {"Active", "Done"}
+
+
+@pytest.mark.asyncio
+async def test_list_projects_excludes_tasks_and_trashed(authed_client, db):
+    db.add(Task(uuid="proj_active01abcdefghi", title="Active proj", type=1, status=0))
+    db.add(Task(uuid="proj_trashed1abcdefghi", title="Trashed proj", type=1, trashed=True))
+    db.add(Task(uuid="just_a_task1abcdefghijk", title="Plain task", type=0))
+    await db.commit()
+
+    resp = await authed_client.get("/api/projects")
+    titles = [p["title"] for p in resp.json()]
+    assert titles == ["Active proj"]
+
+
+@pytest.mark.asyncio
+async def test_update_project(authed_client):
+    create_resp = await authed_client.post("/api/projects", json={"title": "Original"})
+    uuid = create_resp.json()["uuid"]
+
+    resp = await authed_client.patch(f"/api/projects/{uuid}", json={"title": "Renamed"})
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Renamed"
+    assert resp.json()["type"] == "project"
+
+
+@pytest.mark.asyncio
+async def test_complete_project(authed_client, db):
+    create_resp = await authed_client.post("/api/projects", json={"title": "Wrap up"})
+    uuid = create_resp.json()["uuid"]
+
+    resp = await authed_client.post(f"/api/projects/{uuid}/complete")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_delete_project(authed_client, db):
+    create_resp = await authed_client.post("/api/projects", json={"title": "Trash me"})
+    uuid = create_resp.json()["uuid"]
+
+    resp = await authed_client.delete(f"/api/projects/{uuid}")
+    assert resp.status_code == 204
+
+    db.expire_all()
+    result = await db.execute(select(Task).where(Task.uuid == uuid))
+    assert result.scalar_one().trashed is True
+
+
+@pytest.mark.asyncio
+async def test_delete_project_404(authed_client):
+    resp = await authed_client.delete("/api/projects/nonexistent_uuid_12345")
+    assert resp.status_code == 404

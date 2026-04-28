@@ -111,6 +111,39 @@ class TaskService(TaskServiceProtocol):
     async def list_trash(self, session, *, limit=100, offset=None):
         return await self._sdk.list_trash(session, limit=limit, offset=offset)
 
+    async def list_projects(self, session, *, include_completed=False, limit=None, offset=None):
+        return await self._sdk.list_projects(
+            session,
+            include_completed=include_completed,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def search_tasks(
+        self,
+        session,
+        *,
+        query,
+        include_trashed=False,
+        include_checklists=True,
+        limit=None,
+        offset=None,
+    ):
+        return await self._sdk.search_tasks(
+            session,
+            query=query,
+            include_trashed=include_trashed,
+            include_checklists=include_checklists,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def search_advanced(self, session, **kwargs):
+        try:
+            return await self._sdk.search_advanced(session, **kwargs)
+        except EntityNotFoundError as e:
+            raise _not_found(e)
+
 
 def get_task_service() -> TaskServiceProtocol:
     return TaskService()

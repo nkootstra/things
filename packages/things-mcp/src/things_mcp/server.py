@@ -136,9 +136,113 @@ async def list_tags() -> str:
 
 
 @mcp.tool()
-async def list_projects() -> str:
-    """List all projects. Projects are multi-step tasks that contain sub-tasks."""
-    result = await _get_client().list_projects()
+async def list_projects(
+    include_completed: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> str:
+    """List all projects. Projects are multi-step tasks that contain sub-tasks.
+
+    Args:
+        include_completed: If True, also include completed/cancelled projects.
+            Default False (active projects only).
+        limit: Optional max number of projects.
+        offset: Optional pagination offset.
+    """
+    result = await _get_client().list_projects(
+        include_completed=include_completed, limit=limit, offset=offset
+    )
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def search_tasks(
+    query: str,
+    include_trashed: bool = False,
+    include_checklists: bool = True,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> str:
+    """Full-text search across task titles, notes, and checklist items.
+
+    Case-insensitive substring match. Trashed tasks are excluded by default.
+
+    Args:
+        query: Search string. Returns empty list when blank.
+        include_trashed: If True, also search trashed tasks.
+        include_checklists: If True (default), also match tasks whose
+            checklist items contain the query.
+        limit: Optional max number of tasks.
+        offset: Optional pagination offset.
+    """
+    result = await _get_client().search_tasks(
+        query,
+        include_trashed=include_trashed,
+        include_checklists=include_checklists,
+        limit=limit,
+        offset=offset,
+    )
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def search_advanced(
+    status: str | None = None,
+    type: str | None = None,
+    schedule: str | None = None,
+    area_uuid: str | None = None,
+    project_uuid: str | None = None,
+    tag: str | None = None,
+    include_descendants: bool = True,
+    start_date_from: float | None = None,
+    start_date_to: float | None = None,
+    deadline_from: float | None = None,
+    deadline_to: float | None = None,
+    modified_since: float | None = None,
+    completed_since: float | None = None,
+    include_trashed: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> str:
+    """Multi-predicate search. Every filter is optional and AND-combined.
+
+    Use this for GTD reviews ("what's overdue?"), area sweeps, or
+    finding tasks modified recently.
+
+    Args:
+        status: 'pending', 'cancelled', or 'completed'.
+        type: 'task', 'project', or 'heading'.
+        schedule: 'inbox', 'anytime', or 'someday'.
+        area_uuid: Filter by area.
+        project_uuid: Filter by parent project.
+        tag: Tag UUID or name to filter by.
+        include_descendants: When `tag` is set, also match descendant tags.
+        start_date_from, start_date_to: Unix-timestamp range for start date.
+        deadline_from, deadline_to: Unix-timestamp range for deadline.
+        modified_since: Only tasks modified at or after this timestamp.
+        completed_since: Only tasks completed at or after this timestamp.
+        include_trashed: If True, also include trashed tasks.
+        limit: Optional max number of tasks.
+        offset: Optional pagination offset.
+    """
+    result = await _get_client().search_advanced(
+        status=status,
+        type=type,
+        schedule=schedule,
+        area_uuid=area_uuid,
+        project_uuid=project_uuid,
+        tag=tag,
+        include_descendants=include_descendants,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
+        deadline_from=deadline_from,
+        deadline_to=deadline_to,
+        modified_since=modified_since,
+        completed_since=completed_since,
+        include_trashed=include_trashed,
+        limit=limit,
+        offset=offset,
+    )
     return json.dumps(result, indent=2)
 
 
@@ -373,6 +477,106 @@ async def create_tag(title: str, parent: str | None = None, shortcut: str | None
         payload["shortcut"] = shortcut
     result = await _get_client().create_tag(payload)
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def create_project(
+    title: str,
+    notes: str | None = None,
+    schedule: str = "anytime",
+    area_uuid: str | None = None,
+    deadline: float | None = None,
+    start_date: float | None = None,
+    tags: list[str] | None = None,
+) -> str:
+    """Create a new project. Projects are multi-step tasks that hold sub-tasks.
+
+    Args:
+        title: Project title (required).
+        notes: Optional notes/description.
+        schedule: 'inbox', 'anytime' (default), or 'someday'.
+        area_uuid: Optional area to assign the project to.
+        deadline: Unix timestamp deadline.
+        start_date: Unix timestamp for the project's start date.
+        tags: Optional list of tag UUIDs or names.
+    """
+    payload: dict = {"title": title, "schedule": schedule}
+    if notes is not None:
+        payload["notes"] = notes
+    if area_uuid is not None:
+        payload["area_uuid"] = area_uuid
+    if deadline is not None:
+        payload["deadline"] = deadline
+    if start_date is not None:
+        payload["start_date"] = start_date
+    if tags is not None:
+        payload["tags"] = tags
+    result = await _get_client().create_project(payload)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def update_project(
+    uuid: str,
+    title: str | None = None,
+    notes: str | None = None,
+    schedule: str | None = None,
+    area_uuid: str | None = None,
+    deadline: float | None = None,
+    start_date: float | None = None,
+    tags: list[str] | None = None,
+) -> str:
+    """Update a project's fields. Only provided fields are changed.
+
+    Args:
+        uuid: Project UUID (required).
+        title: New title.
+        notes: New notes.
+        schedule: 'inbox', 'anytime', or 'someday'.
+        area_uuid: Move the project to this area.
+        deadline: New deadline (Unix timestamp).
+        start_date: New start date (Unix timestamp).
+        tags: New tag list (replaces existing tags).
+    """
+    payload: dict = {}
+    if title is not None:
+        payload["title"] = title
+    if notes is not None:
+        payload["notes"] = notes
+    if schedule is not None:
+        payload["schedule"] = schedule
+    if area_uuid is not None:
+        payload["area_uuid"] = area_uuid
+    if deadline is not None:
+        payload["deadline"] = deadline
+    if start_date is not None:
+        payload["start_date"] = start_date
+    if tags is not None:
+        payload["tags"] = tags
+    result = await _get_client().update_project(uuid, payload)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def complete_project(uuid: str) -> str:
+    """Mark a project as completed.
+
+    Args:
+        uuid: Project UUID.
+    """
+    result = await _get_client().complete_project(uuid)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def delete_project(uuid: str) -> str:
+    """Move a project to the trash.
+
+    Args:
+        uuid: Project UUID.
+    """
+    await _get_client().delete_project(uuid)
+    return json.dumps({"status": "deleted", "uuid": uuid})
 
 
 @mcp.tool()
