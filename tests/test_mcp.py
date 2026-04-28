@@ -19,7 +19,7 @@ def test_all_read_tools_registered():
         "list_inbox", "list_today", "list_upcoming", "list_anytime",
         "list_someday", "list_logbook", "list_trash", "get_task",
         "list_areas", "list_tags", "list_projects", "list_tasks_by_tag",
-        "list_all_tasks",
+        "list_all_tasks", "search_tasks", "search_advanced",
     }
     assert expected_read.issubset(tool_names), f"Missing: {expected_read - tool_names}"
 
@@ -30,12 +30,13 @@ def test_all_write_tools_registered():
         "create_task", "update_task", "complete_task", "cancel_task",
         "delete_task", "schedule_task", "move_to_project", "assign_tags",
         "create_tag", "trigger_sync",
+        "create_project", "update_project", "complete_project", "delete_project",
     }
     assert expected_write.issubset(tool_names), f"Missing: {expected_write - tool_names}"
 
 
 def test_tool_count():
-    assert len(mcp._tool_manager._tools) == 26
+    assert len(mcp._tool_manager._tools) == 32
 
 
 def test_all_tools_have_descriptions():
@@ -166,3 +167,54 @@ async def test_integration_list_projects(mcp_client):
     await mcp_client.create_task({"title": "My Project", "type": "project"})
     projects = await mcp_client.list_projects()
     assert any(p["title"] == "My Project" for p in projects)
+
+
+@pytest.mark.asyncio
+async def test_integration_search_tasks(mcp_client):
+    """search_tasks finds tasks by title."""
+    await mcp_client.create_task({"title": "Buy oat milk"})
+    await mcp_client.create_task({"title": "Walk dog"})
+
+    results = await mcp_client.search_tasks("oat")
+    titles = [t["title"] for t in results]
+    assert titles == ["Buy oat milk"]
+
+
+@pytest.mark.asyncio
+async def test_integration_search_advanced(mcp_client):
+    """search_advanced filters by multiple predicates."""
+    await mcp_client.create_task({"title": "A task"})
+    proj = await mcp_client.create_project({"title": "A project"})
+
+    results = await mcp_client.search_advanced(type="project")
+    uuids = {r["uuid"] for r in results}
+    assert proj["uuid"] in uuids
+
+
+@pytest.mark.asyncio
+async def test_integration_create_and_complete_project(mcp_client):
+    """Project lifecycle: create, complete, then verify status."""
+    proj = await mcp_client.create_project({"title": "Ship it", "schedule": "anytime"})
+    assert proj["type"] == "project"
+
+    completed = await mcp_client.complete_project(proj["uuid"])
+    assert completed["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_integration_update_project(mcp_client):
+    """update_project changes fields without losing project type."""
+    proj = await mcp_client.create_project({"title": "Original"})
+    updated = await mcp_client.update_project(proj["uuid"], {"title": "Renamed"})
+    assert updated["title"] == "Renamed"
+    assert updated["type"] == "project"
+
+
+@pytest.mark.asyncio
+async def test_integration_delete_project(mcp_client):
+    """delete_project soft-deletes (trashed)."""
+    proj = await mcp_client.create_project({"title": "Trash me"})
+    await mcp_client.delete_project(proj["uuid"])
+
+    trash = await mcp_client.list_trash()
+    assert any(t["uuid"] == proj["uuid"] for t in trash)

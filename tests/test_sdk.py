@@ -222,6 +222,73 @@ async def test_task_service_not_found_raises_sdk_error(sdk_session):
         await svc.get_task(sdk_session, "missing-task")
 
 
+@pytest.mark.asyncio
+async def test_task_service_search_tasks(sdk_session):
+    svc = TaskService()
+    sdk_session.add(Task(uuid="sdk_srch_milk_abcdefg", title="Buy milk"))
+    sdk_session.add(Task(uuid="sdk_srch_dog__abcdefg", title="Walk the dog"))
+    sdk_session.add(Task(uuid="sdk_srch_bread_abcdef", title="Buy bread", notes="From the bakery"))
+    await sdk_session.commit()
+
+    matches = await svc.search_tasks(sdk_session, query="buy")
+    titles = {t["title"] for t in matches}
+    assert titles == {"Buy milk", "Buy bread"}
+
+    notes_match = await svc.search_tasks(sdk_session, query="bakery")
+    assert [t["title"] for t in notes_match] == ["Buy bread"]
+
+
+@pytest.mark.asyncio
+async def test_task_service_search_tasks_empty_query(sdk_session):
+    svc = TaskService()
+    sdk_session.add(Task(uuid="sdk_srch_empty_abcdef", title="Anything"))
+    await sdk_session.commit()
+    assert await svc.search_tasks(sdk_session, query="") == []
+
+
+@pytest.mark.asyncio
+async def test_task_service_list_projects(sdk_session):
+    svc = TaskService()
+    sdk_session.add(Task(uuid="sdk_proj_one1abcdefgh", title="Proj 1", type=1, status=0))
+    sdk_session.add(Task(uuid="sdk_proj_done_abcdefg", title="Proj done", type=1, status=3))
+    sdk_session.add(Task(uuid="sdk_just_task_abcdefg", title="Just a task", type=0))
+    await sdk_session.commit()
+
+    active = await svc.list_projects(sdk_session)
+    assert [p["title"] for p in active] == ["Proj 1"]
+
+    all_projects = await svc.list_projects(sdk_session, include_completed=True)
+    titles = {p["title"] for p in all_projects}
+    assert titles == {"Proj 1", "Proj done"}
+
+
+@pytest.mark.asyncio
+async def test_task_service_search_advanced_combines_predicates(sdk_session):
+    svc = TaskService()
+    sdk_session.add(Task(
+        uuid="sdk_adv_match__abcdefg", title="Match",
+        type=1, status=0, deadline=2000.0, modification_date=1500.0,
+    ))
+    sdk_session.add(Task(
+        uuid="sdk_adv_wrongdl_abcdef", title="Wrong deadline",
+        type=1, status=0, deadline=500.0, modification_date=1500.0,
+    ))
+    sdk_session.add(Task(
+        uuid="sdk_adv_wrongty_abcdef", title="Wrong type",
+        type=0, status=0, deadline=2000.0, modification_date=1500.0,
+    ))
+    await sdk_session.commit()
+
+    results = await svc.search_advanced(
+        sdk_session,
+        type=1,
+        deadline_from=1000.0,
+        deadline_to=5000.0,
+        modified_since=1000.0,
+    )
+    assert [r["title"] for r in results] == ["Match"]
+
+
 # --- Sync engine ---
 
 

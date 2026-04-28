@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -165,6 +165,130 @@ class TaskService:
             .order_by(Task.modification_date.desc())
         )
         result = await session.execute(_paginate(query, limit, offset))
+        return [await self._task_to_dict(session, t) for t in result.scalars()]
+
+    async def list_projects(
+        self,
+        session: AsyncSession,
+        *,
+        include_completed: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]:
+        """List projects (tasks with type=1) that aren't trashed.
+
+        By default returns only active (pending) projects. Pass
+        ``include_completed=True`` to also include completed/cancelled projects.
+        """
+        conditions = [Task.type == 1, Task.trashed == False]
+        if not include_completed:
+            conditions.append(Task.status == 0)
+        query = select(Task).where(*conditions).order_by(Task.index)
+        result = await session.execute(_paginate(query, limit, offset))
+        return [await self._task_to_dict(session, t) for t in result.scalars()]
+
+    async def search_tasks(
+        self,
+        session: AsyncSession,
+        *,
+        query: str,
+        include_trashed: bool = False,
+        include_checklists: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]:
+        """Full-text search across task titles and notes.
+
+        Case-insensitive substring match on ``title`` and ``notes``. When
+        ``include_checklists`` is True (default), also matches tasks whose
+        checklist items contain the query. Trashed tasks are excluded by
+        default.
+        """
+        if not query:
+            return []
+        needle = f"%{query.lower()}%"
+        predicates = [
+            func.lower(Task.title).like(needle),
+            func.lower(Task.notes).like(needle),
+        ]
+        if include_checklists:
+            predicates.append(
+                Task.uuid.in_(
+                    select(ChecklistItem.task_uuid).where(
+                        func.lower(ChecklistItem.title).like(needle)
+                    )
+                )
+            )
+        conditions = [or_(*predicates)]
+        if not include_trashed:
+            conditions.append(Task.trashed == False)
+        stmt = select(Task).where(*conditions).order_by(Task.modification_date.desc())
+        result = await session.execute(_paginate(stmt, limit, offset))
+        return [await self._task_to_dict(session, t) for t in result.scalars()]
+
+    async def search_advanced(
+        self,
+        session: AsyncSession,
+        *,
+        status: int | None = None,
+        type: int | None = None,
+        schedule: int | None = None,
+        area_uuid: str | None = None,
+        project_uuid: str | None = None,
+        tag: str | None = None,
+        include_descendants: bool = True,
+        start_date_from: float | None = None,
+        start_date_to: float | None = None,
+        deadline_from: float | None = None,
+        deadline_to: float | None = None,
+        modified_since: float | None = None,
+        completed_since: float | None = None,
+        include_trashed: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict]:
+        """Multi-predicate search across tasks.
+
+        Every parameter is optional. Predicates are AND-combined. ``tag``
+        accepts a tag UUID or name; when ``include_descendants`` is True
+        (default) child tags also match.
+        """
+        conditions = []
+        if not include_trashed:
+            conditions.append(Task.trashed == False)
+        if status is not None:
+            conditions.append(Task.status == status)
+        if type is not None:
+            conditions.append(Task.type == type)
+        if schedule is not None:
+            conditions.append(Task.schedule == schedule)
+        if area_uuid is not None:
+            conditions.append(Task.area_uuid == area_uuid)
+        if project_uuid is not None:
+            conditions.append(Task.project_uuid == project_uuid)
+        if start_date_from is not None:
+            conditions.append(Task.start_date >= start_date_from)
+        if start_date_to is not None:
+            conditions.append(Task.start_date <= start_date_to)
+        if deadline_from is not None:
+            conditions.append(Task.deadline >= deadline_from)
+        if deadline_to is not None:
+            conditions.append(Task.deadline <= deadline_to)
+        if modified_since is not None:
+            conditions.append(Task.modification_date >= modified_since)
+        if completed_since is not None:
+            conditions.append(Task.completion_date >= completed_since)
+
+        if tag is not None:
+            tag_uuids = await self._resolve_tag_filter(session, tag, include_descendants)
+            conditions.append(
+                Task.uuid.in_(
+                    select(TaskTag.task_uuid).where(TaskTag.tag_uuid.in_(tag_uuids))
+                )
+            )
+
+        stmt = select(Task).where(*conditions).order_by(Task.modification_date.desc())
+        result = await session.execute(_paginate(stmt, limit, offset))
         return [await self._task_to_dict(session, t) for t in result.scalars()]
 
     async def get_task(self, session: AsyncSession, uuid: str) -> dict:

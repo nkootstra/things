@@ -10,6 +10,18 @@ Both packages (`things-api` and `things-sdk`) are versioned together.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Full-text search** — `GET /api/tasks/search?q=...` and MCP `search_tasks` tool. Case-insensitive substring match across task title, notes, and (by default) checklist items. Trashed tasks excluded by default.
+- **Advanced search** — `GET /api/tasks/search/advanced` and MCP `search_advanced` tool. Multi-predicate filtering on status, type, schedule, area, project, tag, start date range, deadline range, modification time, and completion time. Predicates AND-combine.
+- **Project CRUD** — `GET/POST /api/projects`, `PATCH/DELETE /api/projects/{uuid}`, `POST /api/projects/{uuid}/complete`, plus matching MCP tools `create_project`, `update_project`, `complete_project`, `delete_project`. Replaces the previous client-side `list_projects` filter with a real endpoint that excludes completed and trashed projects by default.
+
+### Changed
+- `list_projects` MCP tool now hits the dedicated `/api/projects` endpoint (was a client-side filter). Adds `include_completed`, `limit`, and `offset` parameters.
+
+---
+
 ## [0.2.4] — 2026-04-25
 
 ### Added
