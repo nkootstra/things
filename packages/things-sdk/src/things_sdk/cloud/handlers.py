@@ -89,15 +89,17 @@ class TaskHandler(EntityHandler):
             task.reminder_time = payload.reminder_time
         if "leaves_tombstone" in sent:
             task.leaves_tombstone = bool(payload.leaves_tombstone) if payload.leaves_tombstone is not None else False
-        if payload.area_ids and payload.area_ids:
-            task.area_uuid = payload.area_ids[0]
-        if payload.project_ids and payload.project_ids:
-            task.project_uuid = payload.project_ids[0]
-        if payload.heading_ids and payload.heading_ids:
-            task.heading_uuid = payload.heading_ids[0]
-        if payload.contact_ids is not None:
-            if isinstance(payload.contact_ids, list) and payload.contact_ids:
-                task.contact_uuid = payload.contact_ids[0]
+        # Containment fields: cloud sends [] to clear the relationship.
+        # Use model_fields_set to distinguish "not sent" from "sent as []".
+        if "area_ids" in sent:
+            task.area_uuid = payload.area_ids[0] if payload.area_ids else None
+        if "project_ids" in sent:
+            task.project_uuid = payload.project_ids[0] if payload.project_ids else None
+        if "heading_ids" in sent:
+            task.heading_uuid = payload.heading_ids[0] if payload.heading_ids else None
+        if "contact_ids" in sent:
+            if isinstance(payload.contact_ids, list):
+                task.contact_uuid = payload.contact_ids[0] if payload.contact_ids else None
             # int value (0) means no contact — ignore
 
         # Replace-set tag associations (cloud is source of truth)
@@ -152,12 +154,14 @@ class TagHandler(EntityHandler):
             tag = Tag(uuid=uuid)
             session.add(tag)
 
+        sent = payload.model_fields_set
         if payload.title is not None:
             tag.title = payload.title
         if payload.shortcut is not None:
             tag.shortcut = payload.shortcut
-        if payload.parent_ids and payload.parent_ids:
-            tag.parent_uuid = payload.parent_ids[0]
+        # Cloud sends parent_ids=[] to move a tag back to root.
+        if "parent_ids" in sent:
+            tag.parent_uuid = payload.parent_ids[0] if payload.parent_ids else None
         if payload.index is not None:
             tag.index = payload.index
 

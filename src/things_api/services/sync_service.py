@@ -17,6 +17,7 @@ import things_api.config as config
 from things_sdk.db.models import SyncState
 from things_sdk.protocols import CloudClientProtocol
 from things_api.services.contracts import SyncServiceProtocol
+from things_api.services.sync_mutex import ensure_sync_state, release_sync_lock
 
 
 class SyncService:
@@ -71,30 +72,47 @@ class SyncService:
         if not config.settings.things_email or not config.settings.things_password:
             raise HTTPException(status_code=503, detail="Things Cloud credentials not configured")
 
-        result = await session.execute(select(SyncState).where(SyncState.id == 1))
-        state = result.scalar_one_or_none()
-        if not state:
-            state = SyncState(id=1)
-            session.add(state)
-            await session.commit()
+        await ensure_sync_state(session)
 
-        if state.last_sync_at:
-            elapsed = time.time() - state.last_sync_at
-            if elapsed < 60:
-                raise HTTPException(status_code=429, detail=f"Rate limited. Try again in {int(60 - elapsed)}s")
-
+        # Acquire the shared sync mutex (also held by the background scheduler).
+        # Combine the rate-limit check and lock acquisition into one atomic CAS
+        # so two concurrent callers cannot both pass the 60s window check.
         now = time.time()
+        rate_limit_threshold = now - 60.0
         lock_until = now + max(1.0, config.settings.manual_sync_lock_seconds)
         lock_stmt = (
             update(SyncState)
             .where(SyncState.id == 1)
-            .where(or_(SyncState.manual_sync_lock_until.is_(None), SyncState.manual_sync_lock_until <= now))
+            .where(
+                or_(
+                    SyncState.manual_sync_lock_until.is_(None),
+                    SyncState.manual_sync_lock_until <= now,
+                )
+            )
+            .where(
+                or_(
+                    SyncState.last_sync_at.is_(None),
+                    SyncState.last_sync_at <= rate_limit_threshold,
+                )
+            )
             .values(manual_sync_lock_until=lock_until)
         )
         lock_res: CursorResult = await session.execute(lock_stmt)  # type: ignore[assignment]
         await session.commit()
         if not lock_res.rowcount:
-            raise HTTPException(status_code=409, detail="Manual sync already in progress")
+            # Either a concurrent sync holds the lock, or the rate-limit window
+            # has not elapsed. Re-read state to give the caller a useful error.
+            result = await session.execute(select(SyncState).where(SyncState.id == 1))
+            state = result.scalar_one()
+            if state.manual_sync_lock_until and state.manual_sync_lock_until > now:
+                raise HTTPException(
+                    status_code=409, detail="Manual sync already in progress"
+                )
+            elapsed = now - (state.last_sync_at or 0)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limited. Try again in {max(1, int(60 - elapsed))}s",
+            )
 
         client = self._client_factory(config.settings.things_email, config.settings.things_password)
         try:
@@ -105,8 +123,13 @@ class SyncService:
             raise HTTPException(status_code=503, detail=f"Circuit breaker open. Retry in {e.retry_after_seconds}s")
         finally:
             await client.close()
-            await session.execute(update(SyncState).where(SyncState.id == 1).values(manual_sync_lock_until=None))
-            await session.commit()
+            try:
+                await release_sync_lock(session)
+            except Exception:
+                # If the session is in a bad state, the lock will expire
+                # naturally after manual_sync_lock_seconds. Don't mask the
+                # original exception by raising from finally.
+                pass
 
 
 def get_sync_service() -> SyncServiceProtocol:

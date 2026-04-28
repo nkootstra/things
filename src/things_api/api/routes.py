@@ -125,8 +125,19 @@ async def list_tasks_by_tag(
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
 ):
+    """List tasks filtered by tag.
+
+    Pagination: ``limit`` and ``offset`` are optional. Omit both to fetch
+    every matching task in one request — agents and scripts that need the
+    full set should leave them unset, or page with ``offset += limit``
+    until the response is shorter than ``limit``.
+    """
     return await task_service.list_tasks(
-        session, tag=tag, include_descendants=include_descendants
+        session,
+        tag=tag,
+        include_descendants=include_descendants,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -134,10 +145,19 @@ async def list_tasks_by_tag(
 
 @router.get("/tasks")
 async def list_tasks(
+    limit: int | None = None,
+    offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
 ):
-    return await task_service.list_tasks(session)
+    """List all non-trashed tasks.
+
+    Pagination: ``limit`` and ``offset`` are optional. Omit both to fetch
+    every task in one request (the default for agents and scripts that
+    need the full set). To page, increment ``offset`` by ``limit`` until
+    the response is shorter than ``limit``.
+    """
+    return await task_service.list_tasks(session, limit=limit, offset=offset)
 
 
 @router.get("/tasks/{uuid}")
@@ -201,9 +221,9 @@ async def list_areas(
 @router.get("/tags")
 async def list_tags(
     session: AsyncSession = Depends(get_session),
-    task_service: TaskServiceProtocol = Depends(get_task_service),
+    tag_service: TagServiceProtocol = Depends(get_tag_service),
 ):
-    return await task_service.list_tags(session)
+    return await tag_service.list_tags(session)
 
 
 @router.get("/sync/status")

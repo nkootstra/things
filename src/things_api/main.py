@@ -1,9 +1,17 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from importlib.metadata import PackageNotFoundError, version
 import logging
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+
+
+def _package_version() -> str:
+    try:
+        return version("things-api")
+    except PackageNotFoundError:
+        return "0.0.0+unknown"
 
 import things_api.config as config
 from things_api.db import engine as engine_mod
@@ -60,9 +68,29 @@ async def _release_scheduler_lock(owner_id: str) -> None:
 
 
 def _default_scheduler_factory(*, pull_fn, push_fn, interval_seconds):
-    from things_api.cloud.scheduler import SyncScheduler
+    from contextlib import asynccontextmanager
 
-    return SyncScheduler(pull_fn=pull_fn, push_fn=push_fn, interval_seconds=interval_seconds)
+    from things_api.cloud.scheduler import SyncScheduler
+    from things_api.db.engine import async_session
+    from things_api.services.sync_mutex import sync_lock
+
+    @asynccontextmanager
+    async def cycle_guard():
+        # Hold the shared sync mutex (the same row used by POST /api/sync)
+        # for the entire pull+push cycle so background and manual sync are
+        # mutually exclusive.
+        async with async_session() as session:
+            async with sync_lock(
+                session, lock_seconds=config.settings.manual_sync_lock_seconds
+            ) as acquired:
+                yield acquired
+
+    return SyncScheduler(
+        pull_fn=pull_fn,
+        push_fn=push_fn,
+        interval_seconds=interval_seconds,
+        cycle_guard=cycle_guard,
+    )
 
 
 def _get_scheduler_runtime() -> SchedulerRuntimeController:
@@ -99,7 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Things API",
     description="RESTful API over Things3 data via Things Cloud sync",
-    version="0.1.0",
+    version=_package_version(),
     lifespan=lifespan,
 )
 

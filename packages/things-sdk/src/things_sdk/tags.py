@@ -157,10 +157,17 @@ class TagService:
         for t in all_tags:
             children_map.setdefault(t.parent_uuid, []).append(t.uuid)
 
+        # Tag parent_uuid is supposed to form a tree, but a corrupted graph
+        # (cycle introduced by a bad sync, manual DB edit, or external tool)
+        # would loop forever here. Guard with a visited set.
         descendants: list[str] = []
+        visited: set[str] = {tag_uuid}
         queue = list(children_map.get(tag_uuid, []))
         while queue:
             current = queue.pop()
+            if current in visited:
+                continue
+            visited.add(current)
             descendants.append(current)
             queue.extend(children_map.get(current, []))
 
@@ -170,7 +177,11 @@ class TagService:
         """Build the full hierarchical path for a tag."""
         parts = [tag.title]
         current = tag
+        seen: set[str] = {current.uuid}
         while current.parent_uuid and current.parent_uuid in all_tags:
+            if current.parent_uuid in seen:
+                break
+            seen.add(current.parent_uuid)
             current = all_tags[current.parent_uuid]
             parts.append(current.title)
         parts.reverse()

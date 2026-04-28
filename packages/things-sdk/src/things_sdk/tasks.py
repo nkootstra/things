@@ -41,6 +41,8 @@ class TaskService:
         *,
         tag: str | None = None,
         include_descendants: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[dict]:
         query = select(Task).where(Task.trashed == False).order_by(Task.index)
 
@@ -52,7 +54,7 @@ class TaskService:
                 )
             )
 
-        result = await session.execute(query)
+        result = await session.execute(_paginate(query, limit, offset))
         tasks = result.scalars().all()
         return [await self._task_to_dict(session, t) for t in tasks]
 
@@ -73,11 +75,16 @@ class TaskService:
         self, session: AsyncSession, *, limit: int | None = None, offset: int | None = None
     ) -> list[dict]:
         today = _start_of_today_epoch()
+        # Things "Today" only surfaces tasks the user has actively scheduled —
+        # i.e. schedule == anytime (1) with a start_date on or before today.
+        # Without the schedule filter, a Someday task that still has a stale
+        # start_date from a previous schedule would leak into the Today view.
         query = (
             select(Task)
             .where(
                 Task.status == 0,
                 Task.trashed == False,
+                Task.schedule == 1,
                 Task.start_date.isnot(None),
                 Task.start_date <= today + 86399,  # end of today
             )
@@ -95,6 +102,7 @@ class TaskService:
             .where(
                 Task.status == 0,
                 Task.trashed == False,
+                Task.schedule == 1,
                 Task.start_date.isnot(None),
                 Task.start_date > today_end,
             )

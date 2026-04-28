@@ -25,7 +25,12 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "", "case_sensitive": False, "env_file": ".env"}
 
     def validate_api_key(self) -> None:
-        if self.api_key and len(self.api_key) < 32:
+        if not self.api_key:
+            raise ValueError(
+                "API_KEY must be set. Generate one with: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(48))'"
+            )
+        if len(self.api_key) < 32:
             raise ValueError("API_KEY must be at least 32 characters")
         if self.api_key_next and len(self.api_key_next) < 32:
             raise ValueError("API_KEY_NEXT must be at least 32 characters")

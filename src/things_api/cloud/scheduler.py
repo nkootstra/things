@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _no_guard() -> AsyncIterator[bool]:
+    yield True
 
 
 class SyncScheduler:
@@ -15,10 +21,18 @@ class SyncScheduler:
         pull_fn: Callable[[], Awaitable[dict]],
         push_fn: Callable[[], Awaitable[dict]],
         interval_seconds: float = 60,
+        cycle_guard: Callable[[], "AsyncIterator[bool]"] | None = None,
     ):
+        """
+        cycle_guard: optional async context manager factory that yields True
+        if the cycle may proceed, False to skip this cycle. Used to gate the
+        background scheduler behind the shared sync mutex so manual + background
+        syncs cannot run concurrently.
+        """
         self._pull_fn = pull_fn
         self._push_fn = push_fn
         self._interval = interval_seconds
+        self._cycle_guard = cycle_guard or _no_guard
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -44,8 +58,13 @@ class SyncScheduler:
                 logger.exception("Sync cycle failed, will retry next interval")
 
     async def _run_cycle(self) -> None:
-        pull_result = await self._pull_fn()
-        logger.info("Pull sync: %s", pull_result)
+        async with self._cycle_guard() as may_run:
+            if not may_run:
+                logger.debug("Sync cycle skipped: another sync is in progress")
+                return
 
-        push_result = await self._push_fn()
-        logger.info("Push sync: %s", push_result)
+            pull_result = await self._pull_fn()
+            logger.info("Pull sync: %s", pull_result)
+
+            push_result = await self._push_fn()
+            logger.info("Push sync: %s", push_result)

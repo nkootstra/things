@@ -116,8 +116,34 @@ jobs:
         with:
           packages-dir: dist/
 
+  publish-mcp:
+    # Depends on publish-sdk only for ordering — MCP doesn't import the SDK,
+    # but publishing them in lockstep keeps version expectations clear.
+    needs: publish-sdk
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Build MCP package
+        run: uv build --package things-mcp
+
+      - name: Smoke test built MCP wheel
+        run: ./scripts/smoke-test-mcp.sh
+
+      - name: Publish MCP to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
   verify-published-artifacts:
-    needs: [build, release, publish-sdk]
+    needs: [build, release, publish-sdk, publish-mcp]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -140,3 +166,6 @@ jobs:
 
       - name: Verify published SDK on PyPI
         run: ./scripts/verify-published-sdk.sh ${{ env.RELEASE_VERSION }}
+
+      - name: Verify published MCP on PyPI
+        run: ./scripts/verify-published-mcp.sh ${{ env.RELEASE_VERSION }}

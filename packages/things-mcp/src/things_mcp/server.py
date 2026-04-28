@@ -16,9 +16,14 @@ mcp = FastMCP(
     instructions=(
         "Things MCP gives you read/write access to a Things3 task manager. "
         "Use the smart-list tools (list_inbox, list_today, etc.) to see what "
-        "the user has on their plate. Use write tools to create, update, "
-        "complete, or reschedule tasks. Always trigger_sync after writes "
-        "so changes appear on the user's devices."
+        "the user has on their plate. Use list_all_tasks to fetch every task "
+        "across the library, or list_tasks_by_tag to filter by tag. "
+        "Pagination on every list tool is OPT-IN: omit `limit` and `offset` "
+        "to fetch the complete set in one call (the recommended path for "
+        "agents). When a list is too large, page by setting `offset += limit` "
+        "and stop when the returned list is shorter than `limit`. "
+        "Use write tools to create, update, complete, or reschedule tasks. "
+        "Always trigger_sync after writes so changes appear on the user's devices."
     ),
 )
 
@@ -138,14 +143,46 @@ async def list_projects() -> str:
 
 
 @mcp.tool()
-async def list_tasks_by_tag(tag: str, include_descendants: bool = True) -> str:
+async def list_tasks_by_tag(
+    tag: str,
+    include_descendants: bool = True,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> str:
     """List tasks with a specific tag.
 
     Args:
         tag: Tag UUID or name (e.g., 'work' or 'work/errands').
         include_descendants: If True (default), also matches child tags.
+        limit: Optional max number of tasks to return. Omit to fetch every
+            matching task in one call (typical for agent workflows).
+        offset: Optional pagination offset. Page by setting offset += limit
+            until the response is shorter than ``limit``.
     """
-    result = await _get_client().list_tasks_by_tag(tag, include_descendants=include_descendants)
+    result = await _get_client().list_tasks_by_tag(
+        tag,
+        include_descendants=include_descendants,
+        limit=limit,
+        offset=offset,
+    )
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def list_all_tasks(limit: int | None = None, offset: int | None = None) -> str:
+    """List every non-trashed task across the entire library.
+
+    Returns all tasks regardless of schedule, area, or project. By default
+    fetches the full set in a single request — agents that need every task
+    should call this without ``limit`` and ``offset``. To page through a
+    very large library, increment ``offset`` by ``limit`` until the
+    response is shorter than ``limit``.
+
+    Args:
+        limit: Optional max number of tasks. Omit to fetch all tasks.
+        offset: Optional pagination offset.
+    """
+    result = await _get_client().list_tasks(limit=limit, offset=offset)
     return json.dumps(result, indent=2)
 
 
