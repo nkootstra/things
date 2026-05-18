@@ -159,7 +159,6 @@ class ThingsCloudClient:
             headers={
                 "Authorization": f"Password {encoded_password}",
                 "Content-Type": "application/json; charset=UTF-8",
-                "Content-Encoding": "UTF-8",
             },
         )
         resp.raise_for_status()

@@ -2,7 +2,7 @@
 
 from enum import IntEnum
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,7 +47,7 @@ class TaskType(IntEnum):
 
 @router.get("/tasks/inbox")
 async def list_inbox(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -57,7 +57,7 @@ async def list_inbox(
 
 @router.get("/tasks/today")
 async def list_today(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -67,7 +67,7 @@ async def list_today(
 
 @router.get("/tasks/upcoming")
 async def list_upcoming(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -77,7 +77,7 @@ async def list_upcoming(
 
 @router.get("/tasks/anytime")
 async def list_anytime(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -87,7 +87,7 @@ async def list_anytime(
 
 @router.get("/tasks/someday")
 async def list_someday(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -98,7 +98,7 @@ async def list_someday(
 @router.get("/tasks/logbook")
 async def list_logbook(
     since: float | None = None,
-    limit: int | None = 100,
+    limit: int | None = Query(default=100, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -108,7 +108,7 @@ async def list_logbook(
 
 @router.get("/tasks/trash")
 async def list_trash(
-    limit: int | None = 100,
+    limit: int | None = Query(default=100, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -120,7 +120,7 @@ async def list_trash(
 async def list_tasks_by_tag(
     tag: str,
     include_descendants: bool = True,
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -149,7 +149,7 @@ async def search_tasks(
     q: str,
     include_trashed: bool = False,
     include_checklists: bool = True,
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -185,7 +185,7 @@ async def search_advanced(
     modified_since: float | None = None,
     completed_since: float | None = None,
     include_trashed: bool = False,
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -244,7 +244,7 @@ def _resolve_optional_enum(value, enum_cls: type[IntEnum]) -> int | None:
 
 @router.get("/tasks")
 async def list_tasks(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
@@ -500,7 +500,7 @@ class ProjectUpdate(BaseModel):
 @router.get("/projects")
 async def list_projects(
     include_completed: bool = False,
-    limit: int | None = None,
+    limit: int | None = Query(default=None, le=1000),
     offset: int | None = None,
     session: AsyncSession = Depends(get_session),
     task_service: TaskServiceProtocol = Depends(get_task_service),
