@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     sync_circuit_breaker_failures: int = 3
     sync_circuit_breaker_cooldown_seconds: float = 60.0
     readiness_max_sync_errors: int = 5
+    readiness_max_sync_staleness_seconds: float = 0.0  # 0 = staleness check disabled
     log_format: str = "text"       # "text" or "json" — set to "json" for structured logging
     enable_metrics: bool = False    # set to true to expose GET /metrics endpoint
     database_url: str = "sqlite+aiosqlite:///./data/things.db"

@@ -61,7 +61,24 @@ class SchedulerRuntimeController:
     async def _heartbeat(self, owner_id: str) -> None:
         while True:
             await asyncio.sleep(max(1.0, self._settings.scheduler_heartbeat_seconds))
-            renewed = await self._renew_lock(owner_id)
+            try:
+                renewed = await self._renew_lock(owner_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # If the renewal query itself fails (DB blip, connection reset),
+                # the safe default is to surrender leadership: another process
+                # may have already taken over, and continuing to run the
+                # scheduler would risk split-brain syncing.
+                self._logger.exception(
+                    "Heartbeat renewal failed for owner %s; stopping scheduler defensively",
+                    owner_id,
+                )
+                if self._scheduler:
+                    self._scheduler.stop()
+                self._scheduler = None
+                self._owner_id = None
+                return
             if not renewed:
                 self._logger.warning("Lost scheduler lock for owner %s; stopping scheduler", owner_id)
                 if self._scheduler:

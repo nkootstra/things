@@ -5,8 +5,10 @@ import logging
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from things_sdk.cloud.sync import SyncCircuitOpenError
+
 from things_api.main import app
-from things_api.metrics import SyncMetrics
+from things_api.metrics import SyncMetrics, instrument_sync, metrics
 from things_api.observability import configure_logging
 
 
@@ -90,3 +92,76 @@ async def test_metrics_endpoint_enabled(client, monkeypatch):
     assert resp.status_code == 200
     assert "sync_pull_total" in resp.text
     assert "text/plain" in resp.headers["content-type"]
+
+
+# --- instrument_sync helper ---
+
+
+@pytest.fixture
+def reset_metrics():
+    before = (
+        metrics.sync_pull_total,
+        metrics.sync_push_total,
+        metrics.sync_errors_total,
+        metrics.circuit_open_total,
+    )
+    yield
+    (
+        metrics.sync_pull_total,
+        metrics.sync_push_total,
+        metrics.sync_errors_total,
+        metrics.circuit_open_total,
+    ) = before
+
+
+@pytest.mark.asyncio
+async def test_instrument_sync_records_pull_on_success(reset_metrics):
+    before = metrics.sync_pull_total
+
+    async def fake_pull():
+        return {"created": 1}
+
+    result = await instrument_sync("pull", fake_pull())
+    assert result == {"created": 1}
+    assert metrics.sync_pull_total == before + 1
+
+
+@pytest.mark.asyncio
+async def test_instrument_sync_records_push_on_success(reset_metrics):
+    before = metrics.sync_push_total
+
+    async def fake_push():
+        return {"pushed": 2}
+
+    await instrument_sync("push", fake_push())
+    assert metrics.sync_push_total == before + 1
+
+
+@pytest.mark.asyncio
+async def test_instrument_sync_records_error_and_reraises(reset_metrics):
+    before_errors = metrics.sync_errors_total
+    before_pull = metrics.sync_pull_total
+
+    async def fake_pull():
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        await instrument_sync("pull", fake_pull())
+
+    assert metrics.sync_errors_total == before_errors + 1
+    assert metrics.sync_pull_total == before_pull  # success not recorded
+
+
+@pytest.mark.asyncio
+async def test_instrument_sync_records_circuit_open_on_circuit_error(reset_metrics):
+    before_errors = metrics.sync_errors_total
+    before_circuit = metrics.circuit_open_total
+
+    async def fake_pull():
+        raise SyncCircuitOpenError(retry_after_seconds=30)
+
+    with pytest.raises(SyncCircuitOpenError):
+        await instrument_sync("pull", fake_pull())
+
+    assert metrics.sync_errors_total == before_errors + 1
+    assert metrics.circuit_open_total == before_circuit + 1

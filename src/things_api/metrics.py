@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Awaitable
+from dataclasses import dataclass
+from typing import Literal, TypeVar
+
+from things_api.cloud.sync import SyncCircuitOpenError
 
 
 @dataclass
@@ -44,3 +48,28 @@ class SyncMetrics:
 
 # Module-level singleton — only populated when ENABLE_METRICS=true
 metrics = SyncMetrics()
+
+
+T = TypeVar("T")
+
+
+async def instrument_sync(kind: Literal["pull", "push"], awaitable: Awaitable[T]) -> T:
+    """Run a sync coroutine, recording success/error counters.
+
+    Treats SyncCircuitOpenError as an error AND a circuit-open event so the
+    /metrics endpoint reflects both signals separately.
+    """
+    try:
+        result = await awaitable
+    except SyncCircuitOpenError:
+        metrics.record_error()
+        metrics.record_circuit_open()
+        raise
+    except Exception:
+        metrics.record_error()
+        raise
+    if kind == "pull":
+        metrics.record_pull()
+    else:
+        metrics.record_push()
+    return result

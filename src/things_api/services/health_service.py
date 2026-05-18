@@ -36,15 +36,33 @@ class HealthService:
             logger.exception("Readiness probe failed: sync_state query error")
             return 503, {"status": "degraded", "db": "ok", "reason": "sync_state_unavailable"}
 
-        if state and (state.sync_errors_total or 0) > self._settings.readiness_max_sync_errors:
+        # Use consecutive_sync_errors (resets on success) rather than the
+        # lifetime sync_errors_total counter, which would eventually push
+        # /ready permanently into the degraded state.
+        consecutive_errors = (state.consecutive_sync_errors or 0) if state else 0
+        if consecutive_errors > self._settings.readiness_max_sync_errors:
             return 503, {
                 "status": "degraded",
                 "db": "ok",
                 "reason": "sync_errors_threshold_exceeded",
-                "sync_errors_total": state.sync_errors_total or 0,
+                "consecutive_sync_errors": consecutive_errors,
             }
 
         if state and state.circuit_open_until and state.circuit_open_until > time.time():
             return 503, {"status": "degraded", "db": "ok", "reason": "sync_circuit_open"}
+
+        max_staleness = self._settings.readiness_max_sync_staleness_seconds
+        if max_staleness > 0:
+            last_sync_at = state.last_sync_at if state else None
+            if last_sync_at is None:
+                return 503, {"status": "degraded", "db": "ok", "reason": "sync_never_completed"}
+            staleness = time.time() - last_sync_at
+            if staleness > max_staleness:
+                return 503, {
+                    "status": "degraded",
+                    "db": "ok",
+                    "reason": "sync_stale",
+                    "staleness_seconds": int(staleness),
+                }
 
         return 200, {"status": "ready", "db": "ok"}

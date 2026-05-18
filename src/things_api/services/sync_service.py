@@ -16,6 +16,7 @@ import things_sdk.cloud.sync as cloud_sync_mod
 import things_api.config as config
 from things_sdk.db.models import SyncState
 from things_sdk.protocols import CloudClientProtocol
+from things_api.metrics import instrument_sync
 from things_api.services.contracts import SyncServiceProtocol
 from things_api.services.sync_mutex import ensure_sync_state, release_sync_lock
 
@@ -116,8 +117,8 @@ class SyncService:
 
         client = self._client_factory(config.settings.things_email, config.settings.things_password)
         try:
-            pull_result = await self._pull_fn(client, session)
-            push_result = await self._push_fn(client, session)
+            pull_result = await instrument_sync("pull", self._pull_fn(client, session))
+            push_result = await instrument_sync("push", self._push_fn(client, session))
             return {"pull": pull_result, "push": push_result}
         except cloud_sync_mod.SyncCircuitOpenError as e:
             raise HTTPException(status_code=503, detail=f"Circuit breaker open. Retry in {e.retry_after_seconds}s")
