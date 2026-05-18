@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -57,7 +58,9 @@ async def _with_retry(op_name: str, fn: Callable[[], Awaitable[T]]) -> T:
         except Exception:
             if attempt >= attempts:
                 raise
-            delay = base_delay * (2 ** (attempt - 1))
+            # Full jitter: prevents synchronized retry storms when multiple
+            # workers fail simultaneously against the same upstream.
+            delay = random.uniform(0, base_delay * (2 ** (attempt - 1)))
             logger.warning("%s failed (attempt %s/%s), retrying in %.2fs", op_name, attempt, attempts, delay)
             await asyncio.sleep(delay)
 
