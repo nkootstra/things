@@ -175,13 +175,83 @@ async def test_ready_degraded_when_sync_error_threshold_exceeded(client, db, mon
 
     monkeypatch.setattr(settings, "readiness_max_sync_errors", 2)
 
-    db.add(SyncState(id=1, sync_status="error", sync_errors_total=3, last_pull_skipped=0))
+    # Threshold uses consecutive_sync_errors so /ready recovers after a
+    # successful sync; lifetime sync_errors_total should NOT trigger degraded.
+    db.add(SyncState(
+        id=1,
+        sync_status="error",
+        sync_errors_total=99,
+        consecutive_sync_errors=3,
+        last_pull_skipped=0,
+    ))
     await db.commit()
 
     resp = await client.get("/ready")
     assert resp.status_code == 503
-    assert resp.json()["status"] == "degraded"
-    assert resp.json()["reason"] == "sync_errors_threshold_exceeded"
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["reason"] == "sync_errors_threshold_exceeded"
+    assert body["consecutive_sync_errors"] == 3
+
+
+@pytest.mark.asyncio
+async def test_ready_ok_when_lifetime_errors_high_but_consecutive_low(client, db, monkeypatch):
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_errors", 2)
+    monkeypatch.setattr(settings, "readiness_max_sync_staleness_seconds", 0.0)
+
+    db.add(SyncState(
+        id=1,
+        sync_status="synced",
+        sync_errors_total=999,
+        consecutive_sync_errors=0,
+        last_pull_skipped=0,
+    ))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_ready_degraded_when_sync_stale(client, db, monkeypatch):
+    import time as time_mod
+
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_staleness_seconds", 60.0)
+
+    db.add(SyncState(
+        id=1,
+        sync_status="synced",
+        last_sync_at=time_mod.time() - 300.0,
+        consecutive_sync_errors=0,
+    ))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["reason"] == "sync_stale"
+    assert body["staleness_seconds"] >= 300
+
+
+@pytest.mark.asyncio
+async def test_ready_degraded_when_sync_never_completed_with_staleness_enabled(
+    client, db, monkeypatch
+):
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_staleness_seconds", 60.0)
+
+    db.add(SyncState(id=1, sync_status="never", last_sync_at=None))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 503
+    assert resp.json()["reason"] == "sync_never_completed"
 
 
 # --- Write endpoints ---

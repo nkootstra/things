@@ -31,12 +31,13 @@ def _make_sync_fns():
     from things_api.cloud.client import ThingsCloudClient
     from things_api.cloud.sync import pull_sync, push_sync
     from things_api.db.engine import async_session
+    from things_api.metrics import instrument_sync
 
     async def pull():
         client = ThingsCloudClient(email=config.settings.things_email, password=config.settings.things_password)
         try:
             async with async_session() as session:
-                return await pull_sync(client, session)
+                return await instrument_sync("pull", pull_sync(client, session))
         finally:
             await client.close()
 
@@ -44,7 +45,7 @@ def _make_sync_fns():
         client = ThingsCloudClient(email=config.settings.things_email, password=config.settings.things_password)
         try:
             async with async_session() as session:
-                return await push_sync(client, session)
+                return await instrument_sync("push", push_sync(client, session))
         finally:
             await client.close()
 
