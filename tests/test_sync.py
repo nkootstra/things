@@ -517,6 +517,95 @@ async def test_pull_sync_handles_tombstone2(db_session):
 
 
 @pytest.mark.asyncio
+async def test_pull_sync_tombstone_deletes_tag(db_session):
+    """Tombstone2 must delete Tag rows, not just Tasks. Tag-only deletion
+    paths are unexercised elsewhere — a regression would silently leave
+    deleted tags floating in the local DB."""
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import Tag
+
+    db_session.add(Tag(uuid="tombstone_tag_abcdefghi", title="Doomed"))
+    await db_session.commit()
+
+    cloud_items = [{"tombstone_tag_abcdefghi": {"t": 0, "e": "Tombstone2", "p": {}}}]
+    await pull_sync(FakeCloudClient(items=cloud_items, new_index=2), db_session)
+
+    result = await db_session.execute(select(Tag).where(Tag.uuid == "tombstone_tag_abcdefghi"))
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_tombstone_deletes_area(db_session):
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import Area
+
+    db_session.add(Area(uuid="tombstone_area_abcdefgh", title="Doomed area"))
+    await db_session.commit()
+
+    cloud_items = [{"tombstone_area_abcdefgh": {"t": 0, "e": "Tombstone2", "p": {}}}]
+    await pull_sync(FakeCloudClient(items=cloud_items, new_index=2), db_session)
+
+    result = await db_session.execute(select(Area).where(Area.uuid == "tombstone_area_abcdefgh"))
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_tombstone_deletes_checklist_item(db_session):
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import ChecklistItem
+
+    # ChecklistItem requires task_uuid — give it a parent.
+    db_session.add(Task(uuid="parent_task_abcdefghijk", title="Parent"))
+    db_session.add(
+        ChecklistItem(uuid="tombstone_cli_abcdefghi", task_uuid="parent_task_abcdefghijk", title="step")
+    )
+    await db_session.commit()
+
+    cloud_items = [{"tombstone_cli_abcdefghi": {"t": 0, "e": "Tombstone2", "p": {}}}]
+    await pull_sync(FakeCloudClient(items=cloud_items, new_index=2), db_session)
+
+    result = await db_session.execute(
+        select(ChecklistItem).where(ChecklistItem.uuid == "tombstone_cli_abcdefghi")
+    )
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_tombstone_for_unknown_uuid_is_noop(db_session):
+    """Tombstones for entities we've never seen (foreign sync, race with
+    another client) must not crash or counted as 'modified'."""
+    from things_api.cloud.sync import pull_sync
+
+    cloud_items = [{"unknown_phantom_uuid_x": {"t": 0, "e": "Tombstone2", "p": {}}}]
+    counts = await pull_sync(FakeCloudClient(items=cloud_items, new_index=1), db_session)
+
+    # No crash, no spurious deletion count.
+    assert counts.get("deleted", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_pull_sync_tombstone_cleans_up_task_tag_associations(db_session):
+    """When a task is tombstoned, its TaskTag rows must also be removed so
+    smart-list joins don't return phantom links."""
+    from things_api.cloud.sync import pull_sync
+    from things_api.db.models import Tag
+    from things_sdk.db.models import TaskTag
+
+    db_session.add(Task(uuid="assoc_task_abcdefghijkl", title="Tagged"))
+    db_session.add(Tag(uuid="assoc_tag_abcdefghijklm", title="t"))
+    db_session.add(TaskTag(task_uuid="assoc_task_abcdefghijkl", tag_uuid="assoc_tag_abcdefghijklm"))
+    await db_session.commit()
+
+    cloud_items = [{"assoc_task_abcdefghijkl": {"t": 0, "e": "Tombstone2", "p": {}}}]
+    await pull_sync(FakeCloudClient(items=cloud_items, new_index=2), db_session)
+
+    result = await db_session.execute(
+        select(TaskTag).where(TaskTag.task_uuid == "assoc_task_abcdefghijkl")
+    )
+    assert result.first() is None
+
+
+@pytest.mark.asyncio
 async def test_pull_sync_creates_area_with_area3(db_session):
     from things_api.cloud.sync import pull_sync
     from things_api.db.models import Area

@@ -216,6 +216,50 @@ async def test_ready_ok_when_lifetime_errors_high_but_consecutive_low(client, db
 
 
 @pytest.mark.asyncio
+async def test_ready_degraded_when_circuit_open(client, db, monkeypatch):
+    """/ready must reflect an open circuit breaker so LBs route around
+    nodes that can't sync. Currently uncovered."""
+    import time as time_mod
+
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_staleness_seconds", 0.0)
+
+    db.add(SyncState(
+        id=1,
+        sync_status="circuit_open",
+        circuit_open_until=time_mod.time() + 120,
+        consecutive_sync_errors=0,
+    ))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 503
+    assert resp.json()["reason"] == "sync_circuit_open"
+
+
+@pytest.mark.asyncio
+async def test_ready_recovers_after_circuit_closes(client, db, monkeypatch):
+    """Once circuit_open_until is in the past, /ready must return 200."""
+    import time as time_mod
+
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "readiness_max_sync_staleness_seconds", 0.0)
+
+    db.add(SyncState(
+        id=1,
+        sync_status="synced",
+        circuit_open_until=time_mod.time() - 10,
+        consecutive_sync_errors=0,
+    ))
+    await db.commit()
+
+    resp = await client.get("/ready")
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_ready_degraded_when_sync_stale(client, db, monkeypatch):
     import time as time_mod
 
@@ -383,6 +427,30 @@ async def test_trigger_sync_returns_409_when_manual_sync_lock_held(authed_client
     resp = await authed_client.post("/api/sync")
     assert resp.status_code == 409
     assert "already in progress" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_returns_429_when_rate_limited(authed_client, db, monkeypatch):
+    """Within 60s of a previous sync the endpoint must rate-limit with 429
+    and a Retry-After-style message — this path is currently dark and the
+    only thing protecting upstream from manual-trigger floods."""
+    from things_api.config import settings
+
+    monkeypatch.setattr(settings, "things_email", "user@example.com")
+    monkeypatch.setattr(settings, "things_password", "secret")
+
+    db.add(SyncState(
+        id=1,
+        manual_sync_lock_until=None,
+        last_sync_at=time.time() - 5.0,  # recent sync, well within 60s window
+    ))
+    await db.commit()
+
+    resp = await authed_client.post("/api/sync")
+    assert resp.status_code == 429
+    body = resp.json()
+    assert "Rate limited" in body["detail"]
+    assert "Try again in" in body["detail"]
 
 
 @pytest.mark.asyncio
