@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import time
+import zlib
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 from xml.etree import ElementTree
@@ -245,6 +246,17 @@ async def pull_sync(
     return counts
 
 
+def notes_to_wire(text: str | None) -> dict:
+    """Build the Things notes wire object.
+
+    ``ch`` is the CRC32 of the UTF-8 text. Official clients reject a
+    non-empty note with ``ch=0`` as corrupt (``{"t": 0, "diag": "apply"}``)
+    and wipe it. Empty notes still use ``ch=0``.
+    """
+    text = text or ""
+    return {"_t": "tx", "ch": zlib.crc32(text.encode("utf-8")) if text else 0, "v": text, "t": 1}
+
+
 def _to_day_int(ts: float | None) -> int | None:
     """Convert a timestamp to a day-precision integer.
 
@@ -270,7 +282,7 @@ def _task_to_wire(task: Task, tag_uuids: list[str] | None = None) -> list[dict]:
     """
     sr_int = _to_day_int(task.start_date)
     dd_int = _to_day_int(task.deadline)
-    notes_val: dict = {"_t": "tx", "ch": 0, "v": task.notes or "", "t": 1}
+    notes_val = notes_to_wire(task.notes)
 
     action = ACTION_CREATED if task.is_new else ACTION_MODIFIED
 

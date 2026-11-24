@@ -5,4 +5,5 @@ from things_sdk.cloud.client import (  # noqa: F401
     DEFAULT_HEADERS,
     ThingsCloudAuthError,
     ThingsCloudClient,
+    ThingsCloudWriteRefused,
 )

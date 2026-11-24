@@ -5,8 +5,12 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import uuid as uuid_mod
+import zlib
 from urllib.parse import quote
+
+from things_sdk.cloud.protocol import is_valid_things_uuid
 
 import httpx
 
@@ -49,6 +53,52 @@ logger = logging.getLogger(__name__)
 
 class ThingsCloudAuthError(Exception):
     pass
+
+
+class ThingsCloudWriteRefused(Exception):
+    """Raised when a commit is refused locally, before it is sent to Things Cloud."""
+
+
+# Set THINGS_WRITE_FREEZE to a file path and create that file to refuse all writes.
+# Unset (the default) leaves writes enabled.
+WRITE_FREEZE_FILE = os.environ.get("THINGS_WRITE_FREEZE") or None
+
+
+def _guard_commit(items: list[dict]) -> None:
+    """Refuse commits that official clients cannot apply, or that crash Things.app.
+
+    Cloud history is append-only: a bad item cannot be removed by a later commit.
+    """
+    if WRITE_FREEZE_FILE and os.path.exists(WRITE_FREEZE_FILE):
+        raise ThingsCloudWriteRefused(f"Things Cloud writes frozen ({WRITE_FREEZE_FILE} exists)")
+    seen = set()
+    for item in items:
+        for u, ch in item.items():
+            if u in seen:
+                raise ThingsCloudWriteRefused(f"duplicate id in commit: {u}")
+            seen.add(u)
+            if not is_valid_things_uuid(u):
+                raise ThingsCloudWriteRefused(f"non-canonical Things id: {u}")
+            p = ch.get("p") or {}
+            for k in ("ar", "pr", "agr", "tg", "rt", "ts", "pn"):
+                for r in p.get(k) or []:
+                    if not is_valid_things_uuid(r):
+                        raise ThingsCloudWriteRefused(f"non-canonical ref {k}={r} in {u}")
+            if p.get("dloid") is not None and not is_valid_things_uuid(p["dloid"]):
+                raise ThingsCloudWriteRefused(f"non-canonical tombstone target {p['dloid']}")
+            for k in ("sr", "dd", "tir"):
+                v = p.get(k)
+                if v is not None and (not isinstance(v, int) or v % 86400):
+                    raise ThingsCloudWriteRefused(f"{k}={v!r} not an int UTC-midnight day in {u}")
+            if p.get("ss") in (2, 3) and "sp" in p and p["sp"] is None:
+                raise ThingsCloudWriteRefused(f"completed/canceled without sp in {u}")
+            # Official clients put a to-do in a project root or under a heading, never both.
+            if p.get("pr") and p.get("agr"):
+                raise ThingsCloudWriteRefused(f"both pr and agr set in {u}")
+            nt = p.get("nt")
+            if isinstance(nt, dict) and nt.get("t") == 1 and nt.get("v"):
+                if nt.get("ch") != zlib.crc32(str(nt["v"]).encode("utf-8")):
+                    raise ThingsCloudWriteRefused(f"notes checksum mismatch in {u} (the app would wipe the note)")
 
 
 class ThingsCloudClient:
@@ -144,6 +194,7 @@ class ThingsCloudClient:
         if not self.history_key:
             await self.authenticate()
 
+        _guard_commit(items)
         client = await self._get_client()
         encoded_password = quote(self.password, safe="")
 

@@ -22,7 +22,11 @@ Usage::
         tasks = await svc.list_tasks(session)
 """
 
-from things_sdk.cloud.client import ThingsCloudClient as ThingsClient, ThingsCloudAuthError
+from things_sdk.cloud.client import (
+    ThingsCloudClient as ThingsClient,
+    ThingsCloudAuthError,
+    ThingsCloudWriteRefused,
+)
 from things_sdk.cloud.protocol import generate_uuid, is_valid_things_uuid
 from things_sdk.cloud.sync import (
     SyncCircuitOpenError,
@@ -42,6 +46,7 @@ __all__ = [
     # Client
     "ThingsClient",
     "ThingsCloudAuthError",
+    "ThingsCloudWriteRefused",
     "CloudClientProtocol",
     "ThingsSDKError",
     "EntityNotFoundError",
